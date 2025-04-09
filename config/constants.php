@@ -1,0 +1,35 @@
+<?php
+
+define('USER_ROLE_SUPERADMIN', 'SA');
+define('USER_ROLE_ADMIN', 'TE');
+define('USER_ROLE_STUDENT', 'ST');
+
+define('BILL_STATUS_PAID', 'paid');
+define('BILL_STATUS_UNPAID', 'unpaid');
+define('BILL_STATUS_INACTIVE', 'inactive');
+define('BILL_STATUS_ACTIVE', 'active');
+define('BILL_STATUS_LATE', 'late');
+define('BILL_STATUS_DISABLED', 'disabled');
+
+define('LOG_CREATE_BILLS', 'BCREATE');
+define('LOG_CHECK_BILLS', 'BCHECK');
+
+define('FIRST_SEMESTER', 'GASAL');
+define('SECOND_SEMESTER', 'GENAP');
+
+define('TIMESTAMP_FORMAT', 'Y-m-d H:i:s');
+define('DATE_FORMAT', 'Y-m-d');
+
+define('ACADEMIC_YEAR_EIGHT_SLASH_FORMAT', '1');    // "2024/2025"
+define('ACADEMIC_YEAR_EIGHT_FORMAT', '2');          // "20242025"
+define('ACADEMIC_YEAR_FOUR_SLASH_FORMAT', '3');     // "24/25"
+define('ACADEMIC_YEAR_FOUR_FORMAT', '3');           // "2425"
+
+define('YEAR_FOUR_DIGIT_FORMAT', '4');  // 2025
+define('YEAR_TWO_DIGIT_FORMAT', '2');   // 25
+
+define('MONTHLY_FEE', 'monthly_fee');
+define('LATE_FEE', 'late_fee');
+
+define('NULL_VALUE', '');
+define('NULL_NUMBER', '');
