@@ -92,7 +92,7 @@
                             <?= $bill['name'] ?>
                             <div class="text-xs text-blue-500"><?= $bill['virtual_account'] ?></div>
                         </th>
-                        <td class="px-6 py-4">
+                        <td class="px-6 py-4 whitespace-nowrap">
                             <?= $bill['class_name'] ?>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">

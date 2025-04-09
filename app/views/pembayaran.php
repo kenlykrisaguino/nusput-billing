@@ -20,4 +20,53 @@
     </div>
     
     <hr class="mb-2">
+
+    
+    <?php
+
+    use App\Helpers\FormatHelper;
+    use App\Helpers\Call;
+
+    $transactions = $this->getPayments();
+    ?>
+    <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3">
+                        Nama
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        Transaksi
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        Waktu
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (count($transactions) > 0) : ?>
+                    <?php foreach($transactions as $trx) :?>
+                    <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
+                        <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                            <?= $trx['student'] ?>
+                        </th>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <?= FormatHelper::formatRupiah($trx['trx_amount']) ?>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <?= $trx['trx_timestamp'] ?>
+                        </td>
+                    </tr>
+                    <?php endforeach;?>
+                <?php else :?>
+                    <tr>
+                        <td class="px-6 py-4 text-center" colspan="9">
+                            Data transaksi kosong.
+                        </td>
+                    </tr>
+                <?php endif;?>
+            </tbody>
+        </table>
+    </div>
 </div>

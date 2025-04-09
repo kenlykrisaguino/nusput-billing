@@ -19,4 +19,66 @@
     </div>
     
     <hr class="mb-2">
+
+    <?php
+
+    use App\Helpers\FormatHelper;
+    use App\Helpers\Call;
+
+    $recaps = $this->getRecaps();
+    ?>
+    <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3">
+                        Siswa
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        Kelas
+                    </th>
+                    <th scope="col" class="px-6 py-3">
+                        Kontak Orang Tua
+                    </th>
+                    <th scope="col" class="px-6 py-3 bg-emerald-50 text-emerald-700">
+                        Pembayaran
+                    </th>
+                    <th scope="col" class="px-6 py-3 bg-red-50 text-red-700">
+                        Denda
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (count($recaps) > 0) : ?>
+                    <?php foreach($recaps as $recap) :?>
+                    <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
+                        <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                            <?= $recap['name'] ?>
+                            <div class="text-xs text-blue-500"><?= $recap['virtual_account'] ?></div>
+                        </th>
+                        <td class="px-6 py-4">
+                            <?= $recap['class_name'] ?>
+                        </td>
+                        <td class="px-6 py-4">
+                            <?= $recap['parent_phone'] ?>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap bg-emerald-50 text-emerald-700">
+                            <?= FormatHelper::formatRupiah($recap['penerimaan'])?>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap bg-red-50 text-red-700">
+                            <?= FormatHelper::formatRupiah($recap['tunggakan'])?>
+                        </td>
+                    </tr>
+                    <?php endforeach;?>
+                <?php else :?>
+                    <tr>
+                        <td class="px-6 py-4 text-center" colspan="9">
+                            Data siswa kosong.
+                        </td>
+                    </tr>
+                <?php endif;?>
+            </tbody>
+        </table>
+    </div>
+</div>
 </div>
