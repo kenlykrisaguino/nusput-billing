@@ -13,7 +13,7 @@ class LogBE
 
     public function getLogs()
     {        
-        $query = "SELECT * FROM logs ORDER BY created_at";
+        $query = "SELECT * FROM logs ORDER BY created_at DESC";
 
         $result = $this->db->query($query);
         return $this->db->fetchAll($result);
