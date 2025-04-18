@@ -31,7 +31,7 @@
                 <input name="bulk-payments" id="bulk-payments" type="file"
                     class="mt-2 block w-full text-xs file:mr-4 file:rounded-md file:border-0 file:bg-blue-500 file:py-1 file:px-2 file:text-xs file:font-medium file:text-white hover:file:bg-blue-700 focus:outline-none disabled:pointer-events-none disabled:opacity-60" />
                 <small class="text-slate-400 text-xs italic">Format Excel Import Pembayaran dapat diunduh <a
-                        class="text-blue-400 hover:text-blue-500" href="/api/format?type=payment">disini</a></small>
+                        class="text-blue-400 hover:text-blue-500" href="/format?type=payment">disini</a></small>
             </div>
 
             <button onclick="submitPayment(this)"

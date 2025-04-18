@@ -313,6 +313,10 @@ class Web
                 $this->studentBE->getStudentFormatXLSX();
                 header('Location: ' . $_SERVER['HTTP_REFERER']);
                 exit;
+            case 'payment':
+                $this->paymentBE->getPaymentFormatXLSX();
+                header('Location: ' . $_SERVER['HTTP_REFERER']);
+                exit;
             default:
                 header('Location: ' . $_SERVER['HTTP_REFERER']);
                 exit;

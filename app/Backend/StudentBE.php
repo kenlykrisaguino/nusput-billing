@@ -56,7 +56,7 @@ class StudentBE
         return $this->db->fetchAll($result);
     }
 
-    public function getStudentFormat()
+    protected function getStudentFormat()
     {
         $spreadsheet = new Spreadsheet();
 
