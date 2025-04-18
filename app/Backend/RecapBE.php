@@ -25,21 +25,21 @@ class RecapBE
         ];
 
         $params = [
-            'search' => $search ??  NULL_VALUE,
-            'academic_year' => $filter['academic_year'] ??  NULL_VALUE,
-            'semester' => $filter['semester'] ??  NULL_VALUE,
-            'month' => $filter['month'] ??  NULL_VALUE,
-            'level' => $filter['level'] ??  NULL_VALUE,
-            'grade' => $filter['grade'] ??  NULL_VALUE,
-            'section' => $filter['section'] ??  NULL_VALUE,
+            'search' => $params['search'] ??  NULL_VALUE,
+            'academic_year' => $params['filter']['academic_year'] ??  NULL_VALUE,
+            'semester' => $params['filter']['semester'] ??  NULL_VALUE,
+            'month' => $params['filter']['month'] ??  NULL_VALUE,
+            'level' => $params['filter']['level'] ??  NULL_VALUE,
+            'grade' => $params['filter']['grade'] ??  NULL_VALUE,
+            'section' => $params['filter']['section'] ??  NULL_VALUE,
         ];
 
         $paramQuery = NULL_VALUE;
 
         if($params['search'] != NULL_VALUE){
-            $paramQuery .= " AND u.name LIKE '%$params[search]%";
+            $paramQuery .= " AND u.name LIKE '%$params[search]%'";
         }
-        
+
         if($params['academic_year'] != NULL_VALUE){
             $yearEnd = substr($params['academic_year'], -4);
             $yearStart = $yearEnd - 1;
@@ -100,15 +100,16 @@ class RecapBE
                   LEFT JOIN levels l ON c.level_id = l.id
                   LEFT JOIN grades g ON c.grade_id = g.id
                   LEFT JOIN sections s ON c.section_id = s.id
-                  WHERE TRUE $paramQuery";
-
-        $query .= "GROUP BY c.virtual_account, u.name, u.parent_phone,
+                  WHERE 
+                    TRUE 
+                    $paramQuery
+                  GROUP BY c.virtual_account, u.name, u.parent_phone,
                   CONCAT(
                     COALESCE(l.name, ''),
                     ' ', 
                     COALESCE(g.name, ''), 
                     ' ', 
-                    COALESCE(S.name, '')
+                    COALESCE(s.name, '')
                   )";
 
         $result = $this->db->query($query);

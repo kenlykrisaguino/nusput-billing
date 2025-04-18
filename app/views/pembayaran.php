@@ -2,7 +2,7 @@
     <div class="flex justify-between w-full mb-2">
         <h1 class="text-lg font-semibold text-slate-800">Pembayaran</h1>
         <div class="flex gap-2">
-            <div class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">Import Pembayaran</div>
+            <div class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold" onclick="document.getElementById('create-payment').classList.remove('hidden')">Import Pembayaran</div>
             <form action="" method="get">
                 <label for="search" class="mb-2 text-xs font-medium text-blue-900 sr-only">Search</label>
                 <div class="relative">
@@ -20,6 +20,64 @@
     </div>
     
     <hr class="mb-2">
+
+    <div id="create-payment" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
+        <form id="create-payment-form"
+            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
+            <h3 class="text-sm font-bold mb-2 text-slate-700">Import Pembayaran</h3>
+
+            <div class="pb-2">
+                <label for="bulk-payments" class="mb-1 block text-xs font-medium text-slate-700">Upload file</label>
+                <input name="bulk-payments" id="bulk-payments" type="file"
+                    class="mt-2 block w-full text-xs file:mr-4 file:rounded-md file:border-0 file:bg-blue-500 file:py-1 file:px-2 file:text-xs file:font-medium file:text-white hover:file:bg-blue-700 focus:outline-none disabled:pointer-events-none disabled:opacity-60" />
+                <small class="text-slate-400 text-xs italic">Format Excel Import Pembayaran dapat diunduh <a
+                        class="text-blue-400 hover:text-blue-500" href="/api/format?type=payment">disini</a></small>
+            </div>
+
+            <button onclick="submitPayment(this)"
+                class="mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Import
+            </button>
+
+            <button onclick="closeModal('create-payment')"
+                class="mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
+                Batal
+            </button>
+            
+
+        </form>
+        <script>
+                const closeModal = (id) => {
+                    const modal = document.getElementById(id)
+
+                    modal.classList.add('hidden')
+
+                    const inputs = modal.querySelectorAll('input')
+                    const selects = modal.querySelectorAll('select')
+                    const textareas = modal.querySelectorAll('textarea')
+
+                    inputs.forEach(input => {
+                        if (input.type === 'file') {
+                            input.value = null
+                        } else {
+                            input.value = ''
+                        }
+                    })
+
+                    selects.forEach(select => {
+                        select.selectedIndex = 0
+                    })
+
+                    textareas.forEach(textarea => {
+                        textarea.value = ''
+                    })
+                }
+
+                const submitPayment = (this) => {
+                    closeModal('create-payment')
+                }
+        </script>
+    </div>
 
     
     <?php

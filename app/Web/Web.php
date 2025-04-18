@@ -85,6 +85,15 @@ class Web
             $this->handleApiRequest($segments);
             return;
         }
+        if ($page === 'exports') {
+            $this->handleExportRequest($segments);
+            return;
+        }
+        if ($page === 'format') {
+            $this->getFormat();
+            return;
+        }
+
         if ($page !== 'login' && !$this->app->isLoggedIn()) {
             header('Location: /login.php');
             exit();
@@ -150,6 +159,19 @@ class Web
 
             default:
                 ApiResponse::error('Invalid API endpoint', 404);
+                break;
+        }
+    }
+    protected function handleExportRequest(array $segments)
+    {
+        array_shift($segments);
+
+        $exportEndpoint = $segments[0] ?? null;
+
+        switch ($exportEndpoint) {
+            case 'students':
+                $this->studentBE->exportStudentXLSX();
+                $this->back();
                 break;
         }
     }
@@ -254,6 +276,7 @@ class Web
             'search' => $search,
             'filter' => $filter,
         ];
+
         return $this->recapBE->getRecaps($params);
     }
 
@@ -272,5 +295,25 @@ class Web
             'filter' => $filter,
         ];
         return $this->logBE->getLogs($params);
+    }
+
+    public function getFormat()
+    {
+        $type = $_GET['type'] ?? '';
+
+        switch ($type){
+            case 'student':
+                $this->studentBE->getStudentFormatXLSX();
+                header('Location: ' . $_SERVER['HTTP_REFERER']);
+                exit;
+            default:
+                header('Location: ' . $_SERVER['HTTP_REFERER']);
+                exit;
+        }
+    }
+
+    public function back()
+    {
+        header('Location: ' . $_SERVER['HTTP_REFERER']);
     }
 }
