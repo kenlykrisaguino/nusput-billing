@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Tagihan Nusaputera</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="shortcut icon" href="/assets/img/nusaputera.png" type="image/x-icon">
     <link rel="manifest" href="/manifest.json">
     <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
 </head>

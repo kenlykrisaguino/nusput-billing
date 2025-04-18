@@ -1,6 +1,7 @@
 DROP DATABASE IF EXISTS db_tagihan;
 CREATE DATABASE         db_tagihan;
 USE                     db_tagihan;
+
 CREATE TABLE `users` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `nis` varchar(4) NOT NULL,
@@ -10,7 +11,10 @@ CREATE TABLE `users` (
   `phone` varchar(20) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `parent_phone` varchar(20) NOT NULL,
-  `role` char(2) NOT NULL -- SA, AD, ST
+  `role` char(2) NOT NULL, -- SA, AD, ST
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `deleted_at` TIMESTAMP DEFAULT NULL
 );
 
 CREATE TABLE `levels` (

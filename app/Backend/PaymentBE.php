@@ -22,11 +22,14 @@ class PaymentBE
             $query .= " AND u.name LIKE '%$search%";
         }
 
-        
-
         $result = $this->db->query($query);
         return $this->db->fetchAll($result);
     }
 
-    
+    public function getFeeCategories()
+    {
+        $query = "SELECT * FROM fee_categories";
+        $result = $this->db->query($query);
+        return $this->db->fetchAll($result);
+    }
 }

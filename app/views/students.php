@@ -1,3 +1,5 @@
+<script src="/js/pages/students.js"></script>
+
 <div class="w-full">
     <div class="flex justify-between w-full mb-2">
         <h1 class="text-lg font-semibold text-slate-800">List Siswa</h1>
@@ -112,151 +114,9 @@
         </table>
     </div>
 
-    <script>
-        const editStudent = (va) => {
-            document.getElementById('edit-student').classList.remove('hidden')
-
-        }
-
-        const submitEditStudent = (va) => {
-            console.log(va);
-        }
-
-        const showEditTab = (id, element) => {
-            const tabs = document.querySelectorAll('.tab-content')
-            const buttons = document.querySelectorAll('.tab-button')
-
-            tabs.forEach(tab => tab.classList.add('hidden'))
-            buttons.forEach(btn => btn.classList.remove('border-blue-600'));
-            buttons.forEach(btn => btn.classList.add('border-transparent'));
-
-            document.getElementById(`${id}-tab`).classList.remove('hidden');
-            element.classList.remove('border-transparent');
-            element.classList.add('border-blue-600');
-        }
-
-        const closeModal = (id) => {
-            const modal = document.getElementById(id)
-
-            modal.classList.add('hidden')
-
-            const inputs = modal.querySelectorAll('input')
-            const selects = modal.querySelectorAll('select')
-            const textareas = modal.querySelectorAll('textarea')
-
-            inputs.forEach(input => {
-                if (input.type === 'file') {
-                    input.value = null
-                } else {
-                    input.value = ''
-                }
-            })
-
-            selects.forEach(select => {
-                select.selectedIndex = 0
-            })
-
-            textareas.forEach(textarea => {
-                textarea.value = ''
-            })
-        }
-    </script>
-
-    <script>
-        const studentForm = document.getElementById('create-student-form');
-        studentForm.addEventListener('submit', handleStudentSubmit);
-
-        async function handleStudentSubmit(event) {
-            event.preventDefault(); 
-
-            const form = event.target;
-            const messageDiv = document.getElementById('student-form-message');
-            const fileInput = document.getElementById('bulk-students');
-            const submitButton = form.querySelector('button[type="submit"]');
-
-            messageDiv.textContent = '';
-            messageDiv.className = 'mt-3 text-xs';
-            submitButton.disabled = true;
-            submitButton.textContent = 'Processing...';
-
-            let url;
-            let formData;
-            let isBulkUpload = false;
-
-            if (fileInput.files && fileInput.files.length > 0) {
-                isBulkUpload = true;
-                url = '/api/upload-students-bulk'; 
-                formData = new FormData();
-                formData.append('bulk-students', fileInput.files[0]); 
-                console.log('Attempting Bulk Upload...');
-
-            } else {
-                isBulkUpload = false;
-                url = '/api/upload-student'; 
-                formData = new FormData(form);
-                console.log('Attempting Single Student Upload...');
-
-                const requiredFields = ['nis', 'name', 'parent_phone', 'level', 'grade', 'section'];
-                let missingField = false;
-                for (const fieldName of requiredFields) {
-                    if (!formData.get(fieldName)) { 
-                        const fieldElement = form.querySelector(`[name="${fieldName}"]`);
-                        const label = fieldElement.previousElementSibling?.textContent || fieldName;
-                        messageDiv.textContent = `Error: Field "${label.replace('*','').trim()}" is required.`;
-                        messageDiv.classList.add('text-red-600');
-                        missingField = true;
-                        break;
-                    }
-                }
-                if (missingField) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Tambah';
-                    return;
-                }
-            }
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: formData, 
-                    // headers: { 'Content-Type': 'application/json' },
-                    // body: JSON.stringify(Object.fromEntries(formData.entries()))
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    messageDiv.textContent = result.message || (isBulkUpload ? 'Bulk upload successful!' :
-                        'Student added successfully!');
-                    messageDiv.classList.add('text-green-600');
-                    form.reset(); 
-                    setTimeout(() => {
-                        if (typeof closeModal === 'function') {
-                            closeModal('create-student');
-                        }
-                    }, 1500); 
-                } else {
-                    messageDiv.textContent =
-                        `Error: ${result.message || 'An error occurred.'} (Status: ${response.status})`;
-                    messageDiv.classList.add('text-red-600');
-                }
-
-            } catch (error) {
-                console.error('Submission Error:', error);
-                messageDiv.textContent =
-                    `Error: ${isBulkUpload ? 'Bulk' : 'Single'} submission failed. Check console for details.`;
-                messageDiv.classList.add('text-red-600');
-            } finally {
-                if (!messageDiv.classList.contains('text-green-600')) {
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Tambah';
-                }
-            }
-        }
-    </script>
-
     <div id="create-student" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-        <form method="post" id="create-student-form" class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
+        <form method="post" id="create-student-form"
+            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
             <h3 class="text-sm font-bold mb-2 text-slate-700">Tambah Siswa</h3>
 
             <div class="border-b border-slate-600 pb-2 mb-4">
@@ -332,13 +192,12 @@
                 </div>
             </div>
 
-            <button type="submit"
-                class="mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            <button type="submit" class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
                 Tambah
             </button>
 
             <button onclick="closeModal('create-student')" type="button"
-                class="mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
+                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
                 Batal
             </button>
 
@@ -476,13 +335,12 @@
 
         </form>
     </div>
-
 </div>
 
-<script>
-    const submitSiswa = (this) => {
-        closeModal('create-student')
-    }
 
-    const downloadExport = () => {}
+<script type="module">
+    const data = await getClasses()
+
+    const studentForm = document.getElementById("create-student-form");
+    studentForm.addEventListener('submit', submitStudent);
 </script>

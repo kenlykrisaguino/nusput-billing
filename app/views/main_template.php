@@ -7,6 +7,7 @@
     <title>Nusput Billing - <?= ucfirst(htmlspecialchars($page)) ?></title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="manifest" href="/manifest.json">
+    <link rel="shortcut icon" href="/assets/img/nusaputera.png" type="image/x-icon">
     <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
     <script src="https://kit.fontawesome.com/64915ea633.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">

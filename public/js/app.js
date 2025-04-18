@@ -30,9 +30,4 @@ if ("serviceWorker" in navigator) {
 //       console.error("Error fetching student data:", error);
 //     });
 // }
-// 
-// // Initial load
-// updateStudentCount();
-// 
-// // Live update (every 5 seconds - adjust as needed)
-// setInterval(updateStudentCount, 5000);
+//

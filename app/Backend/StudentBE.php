@@ -20,16 +20,20 @@ class StudentBE
     public function getStudents($params = [])
     {        
         $query = "SELECT
-                  u.nis, u.name, l.name AS level, g.name AS grade, s.name AS section,
-                  u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee,
-                  MAX(p.trx_timestamp) AS latest_payment
-                  FROM users u
-                  LEFT JOIN user_class c ON u.id = c.user_id
-                  INNER JOIN levels l ON c.level_id = l.id
-                  INNER JOIN grades g ON c.grade_id = g.id
-                  INNER JOIN sections s ON c.section_id = s.id
-                  LEFT JOIN payments p ON u.id = p.user_id
-                  WHERE u.role = 'ST' AND c.date_left IS NULL
+                    u.nis, u.name, l.name AS level, g.name AS grade, s.name AS section,
+                    u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee,
+                    MAX(p.trx_timestamp) AS latest_payment
+                  FROM 
+                    users u
+                    LEFT JOIN user_class c ON u.id = c.user_id
+                    INNER JOIN levels l ON c.level_id = l.id
+                    INNER JOIN grades g ON c.grade_id = g.id
+                    INNER JOIN sections s ON c.section_id = s.id
+                    LEFT JOIN payments p ON u.id = p.user_id
+                  WHERE 
+                    u.role = 'ST' AND 
+                    c.date_left IS NULL AND
+                    u.deleted_at IS NULL 
                   ";
 
         if (!empty($params['search'])) {
@@ -151,5 +155,12 @@ class StudentBE
     
         $writer->save('php://output');        
         exit;
+    }
+
+    public function deleteStudent($id)
+    {
+        $now = new Datetime();
+        $query = "UPDATE users SET deleted_at=$now WHERE id=$id";
+        return $this->db->query($query);
     }
 }

@@ -8,9 +8,11 @@ use App\Database\Database;
 use App\Backend\StudentBE;
 use App\Backend\PaymentBE;
 use App\Backend\BillBE;
+use App\Backend\FilterBE;
 use App\Backend\RecapBE;
 use App\Backend\JournalBE;
 use App\Backend\LogBE;
+use App\Backend\FilterFE;
 
 class Web
 {
@@ -22,6 +24,7 @@ class Web
     private $recapBE;
     private $journalBE;
     private $logBE;
+    private $filterBE;
 
     private $accessRules = [
         USER_ROLE_SUPERADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
@@ -46,6 +49,7 @@ class Web
         $this->recapBE = new RecapBE($db);
         $this->journalBE = new JournalBE($db);
         $this->logBE = new LogBE($db);
+        $this->filterBE = new FilterBE($db);
     }
 
     public function render($page, $data = [])
@@ -155,6 +159,9 @@ class Web
                 break;
             case 'check-bills':
                 $this->billBE->checkBills();
+                break;
+            case 'filter-classes':
+                $this->filterBE->getClassDetails();
                 break;
 
             default:
