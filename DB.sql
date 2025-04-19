@@ -62,7 +62,8 @@ CREATE TABLE `user_additional_fee` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `user_id` int,
   `fee_id` int,
-  `amount` decimal(14,2) DEFAULT 0
+  `amount` decimal(14,2) DEFAULT 0,
+  `period` datetime NOT NULL -- Hari pertama di bulan itu
 );
 
 CREATE TABLE `bills` (

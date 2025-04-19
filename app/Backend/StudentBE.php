@@ -44,7 +44,7 @@ class StudentBE
                         u.phone LIKE '%$search%' OR 
                         u.email LIKE '%$search%' OR 
                         u.parent_phone LIKE '%$search%' OR 
-                        c.virtual_account LIKE '%$search%'
+                        c.virtual_account LIKE '%$search%' 
                     )";
         }
 
@@ -160,7 +160,13 @@ class StudentBE
     public function deleteStudent($id)
     {
         $now = new Datetime();
-        $query = "UPDATE users SET deleted_at=$now WHERE id=$id";
+        $query = "UPDATE users SET deleted_at='$now' WHERE id=$id";
         return $this->db->query($query);
     }
+
+    protected function inputStudent($students)
+    {
+        
+    }
+    
 }

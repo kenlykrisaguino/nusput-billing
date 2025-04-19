@@ -8,6 +8,8 @@ use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
 use DateTime;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class BillBE
 {
@@ -464,5 +466,226 @@ class BillBE
             'fonnte_response' => $fonnte,
             'messages' => $msg_data
         ], "Notifikasi pembayaran SPP bulan $current_month berhasil dikirim");
+    }
+
+    protected function getFeeCategories()
+    {
+        $query = "SELECT * FROM fee_categories";
+
+        return $this->db->fetchAll($this->db->query($query));
+    }
+
+    protected function getBillFormat(int $late = 0)
+    {
+        $spreadsheet = new Spreadsheet();
+
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'No', 'VA', 'NIS', 
+            'Nama', 'Jenjang', 'Tingkat', 
+            'Kelas', 'SPP'
+        ];
+
+        $fee_categories = $this->getFeeCategories();
+
+        foreach($fee_categories as $fee){
+            $headers[] = $fee['name'];
+        }
+
+        $headers[] = 'Periode Sekarang';
+        $headers[] = 'Jumlah Tunggakan (bulan)';
+        for($i = 0; $i <= $late ; $i++){
+            $headers[] = $i+1;
+            $headers[] = 'Besar Tagihan '.$i+1;
+        }
+        $headers[] = 'Total Piutang';
+        $headers[] = 'HER (DPP/UP)';
+        $headers[] = 'Jumlah Total';
+
+        $sheet->fromArray([$headers], null, 'A1');
+
+        $highestColumn = $sheet->getHighestColumn();
+
+        foreach (range('A', $highestColumn) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+
+        $headerStyle = [
+            'font' => [
+                'bold' => true,
+            ],
+            'alignment' => [ 
+                'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+            ],
+        ];
+
+        $sheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
+
+        return $spreadsheet;
+    }
+
+    public function exportBillXLSX()
+    {
+        $status = $this->status;
+
+        $fee_categories = $this->getFeeCategories();
+
+        $fee_category_select_list = [];
+        $fee_category_subquery_list = [];
+        $fee_category_aliases_list = [];
+
+        if($fee_categories){
+            foreach($fee_categories as $category){
+                $categoryId = (int)$category['id']; 
+                $alias = "Category" . $categoryId;
+
+                $fee_category_select_list[] = "COALESCE(uaf_agg.`$alias`, 0) AS $alias";
+                $fee_category_subquery_list[] = "SUM(CASE WHEN uaf_sub.fee_id = $categoryId THEN uaf_sub.amount ELSE 0 END) AS $alias";
+                $fee_category_aliases_list[] = "$alias";
+            }
+        }
+
+        $fee_category_select_query = !empty($fee_category_select_list) ? ", " . implode(", ", $fee_category_select_list) : "";
+        $fee_category_subquery_query = !empty($fee_category_subquery_list) ? ", " . implode(", ", $fee_category_subquery_list) : "";
+        $fee_category_group_by_query = !empty($fee_category_aliases_list) ? ", " . implode(", ", $fee_category_aliases_list) : "";
+        
+        $query = "SELECT
+                    c.virtual_account AS va,
+                    u.nis AS nis,
+                    u.name AS nama,
+                    COALESCE(l.name, '-') AS level,
+                    COALESCE(g.name, '-') AS grade,
+                    COALESCE(s.name, '-') AS section,
+                    c.monthly_fee,
+                    MAX(CONCAT(YEAR(b.payment_due), '/', LPAD(MONTH(b.payment_due), 2, '0'))) AS payment_due,
+                    COUNT(CASE WHEN b.trx_status = '$status[unpaid]' THEN 1 ELSE NULL END) AS late_count,
+                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS late_fee,
+                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]', '$status[active]') THEN b.trx_amount ELSE 0 END) AS payable,
+                    ub.unpaid_bill_details
+                    $fee_category_select_query
+                FROM
+                    bills b JOIN
+                    users u ON b.user_id = u.id JOIN
+                    (
+                        SELECT
+                            uc_inner.user_id, MAX(uc_inner.section_id) AS max_section_id
+                        FROM
+                            user_class uc_inner
+                        GROUP BY uc_inner.user_id
+                    ) mc ON u.id = mc.user_id JOIN
+                    user_class c ON u.id = c.user_id AND mc.max_section_id = c.section_id JOIN
+                    levels l ON c.level_id = l.id JOIN
+                    grades g ON c.grade_id = g.id JOIN
+                    sections s ON c.section_id = s.id LEFT JOIN
+                    (
+                        SELECT
+                            uaf_sub.user_id
+                            $fee_category_subquery_query
+                        FROM
+                            user_additional_fee uaf_sub
+                        GROUP BY uaf_sub.user_id
+                    ) uaf_agg ON u.id = uaf_agg.user_id LEFT JOIN
+                    (
+                        SELECT
+                            b2.user_id,
+                            JSON_ARRAYAGG(
+                                JSON_OBJECT(
+                                    'trx_amount', b2.trx_amount,
+                                    'trx_detail', IFNULL(b2.trx_detail, JSON_OBJECT()),
+                                    'late_fee', b2.late_fee,
+                                    'payment_due', DATE_FORMAT(b2.payment_due, '%Y-%m-%d')
+                                )
+                            ) AS unpaid_bill_details
+                        FROM bills b2
+                        WHERE b2.trx_status IN ('$status[unpaid]', '$status[active]')
+                        GROUP BY b2.user_id
+                    ) ub ON ub.user_id = u.id
+                WHERE
+                    b.trx_status IN ('$status[unpaid]', '$status[active]')
+                    AND b.user_id = u.id
+                GROUP BY
+                    c.virtual_account, u.nis, u.name,
+                    l.name,
+                    g.name,
+                    s.name,
+                    c.monthly_fee,
+                    l.id,
+                    g.id,
+                    s.id,
+                    ub.unpaid_bill_details
+                    $fee_category_group_by_query
+                ORDER BY
+                    s.id, c.virtual_account";
+
+        $result = $this->db->fetchAll($this->db->query($query));
+        $startRow = 2;
+        $max_late = 0;
+        $data = [];
+
+        foreach($result as $index => $row){
+            $max_late = $max_late = max($max_late, $row['late_count']);
+            $fee_json = isset($row['unpaid_bill_details']) ? json_decode($row['unpaid_bill_details'] ?? "[]", true) : [];
+            $additional_fee = [];
+            $unpaid_fee = [];
+            foreach($fee_json as $idx => $fee_data){
+                $details = $fee_data['trx_detail']['items'];
+                foreach($details as $detail){
+                    if($detail['item_name'] == "monthly_fee" || $detail['item_name'] == "late_fee" ){
+                        break;
+                    }
+                    $additional_fee[$detail['item_name']] = $additional_fee['amount'];
+                }
+                $unpaid_fee[$idx][] = [
+                    'periode' => substr($fee_data['payment_due'], 0, 7),
+                    'amount' => $fee_data['late_fee']
+                ];
+            }
+
+            $data[$index] = [
+                $index+1, $row['va'], $row['nis'], 
+                $row['nama'], $row['level'], $row['grade'],
+                $row['section'], FormatHelper::formatRupiah($row['monthly_fee'])
+            ];
+
+            foreach($fee_categories as $category){
+                $data[$index][] = FormatHelper::formatRupiah(isset($additional_fee[$category['name']]) ? $additional_fee[$category['name']] : 0);
+            }
+
+            $data[$index][] = $row['payment_due'];
+            $data[$index][] = $row['late_count'] + 1;
+            
+            foreach($unpaid_fee as $i => $uf){
+                $data[$index][] = $uf[0]['periode'];
+                $data[$index][] = FormatHelper::formatRupiah($uf[0]['amount']);
+            }
+            $data[$index][] = FormatHelper::formatRupiah($row['payable']);
+            $data[$index][] = "-";
+            $data[$index][] = FormatHelper::formatRupiah($row['payable']);
+        }
+
+        $spreadsheet = $this->getBillFormat($max_late);
+
+        $sheet = $spreadsheet->getActiveSheet();
+        $writer = new Xlsx($spreadsheet);
+
+        foreach($data as $index => $d){
+            $sheet->fromArray($d, null, 'A'.($startRow+$index));
+        }
+        $highestColumn = $sheet->getHighestColumn();
+        foreach (range('A', $highestColumn) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+    
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="export_bills.xlsx"');
+        header('Cache-Control: max-age=0');
+    
+        $writer->save('php://output');        
+        exit;
     }
 }

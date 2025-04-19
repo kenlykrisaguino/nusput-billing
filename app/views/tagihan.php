@@ -2,7 +2,7 @@
     <div class="flex justify-between w-full mb-2">
         <h1 class="text-lg font-semibold text-slate-800">Tagihan</h1>
         <div class="flex gap-2">
-            <div class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">Export</div>
+            <a href="/exports/bills" class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">Export</a>
             <form action="" method="get">
                 <label for="search" class="mb-2 text-xs font-medium text-blue-900 sr-only">Search</label>
                 <div class="relative">

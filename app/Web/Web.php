@@ -183,6 +183,10 @@ class Web
                 $this->studentBE->exportStudentXLSX();
                 $this->back();
                 break;
+            case 'bills':
+                $this->billBE->exportBillXLSX();
+                $this->back();
+                break;
         }
     }
 
