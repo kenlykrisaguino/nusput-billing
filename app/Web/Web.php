@@ -163,6 +163,9 @@ class Web
             case 'filter-classes':
                 $this->filterBE->getClassDetails();
                 break;
+            case 'notify-bills':
+                $this->billBE->notifyBills();
+                break;
 
             default:
                 ApiResponse::error('Invalid API endpoint', 404);

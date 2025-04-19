@@ -33,3 +33,7 @@ define('LATE_FEE', 'late_fee');
 
 define('NULL_VALUE', '');
 define('NULL_NUMBER', '');
+
+define('FIRST_DAY', 'first_day');
+define('DAY_BEFORE', 'day_before');
+define('DAY_AFTER', 'day_after');

@@ -79,6 +79,7 @@ CREATE TABLE `bills` (
 
 CREATE TABLE `payments` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
+  `bill_id` int,
   `user_id` int,
   `trx_amount` decimal(14,2) DEFAULT 0,
   `trx_timestamp` datetime DEFAULT CURRENT_TIMESTAMP,
@@ -113,6 +114,8 @@ ALTER TABLE `user_additional_fee` ADD FOREIGN KEY (`fee_id`) REFERENCES `fee_cat
 ALTER TABLE `bills` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
 
 ALTER TABLE `payments` ADD FOREIGN KEY (`user_id`) REFERENCES `users` (`id`);
+
+ALTER TABLE `payments` ADD FOREIGN KEY (`bill_id`) REFERENCES `bills` (`id`);
 
 ALTER TABLE `logs` ADD FOREIGN KEY (`causer_id`) REFERENCES `users` (`id`);
 

@@ -151,7 +151,7 @@
         });
 
         document.getElementById('notifyOpen').addEventListener('click', function() {
-            axios.get('/api/notify-open')
+            axios.get('/api/notify-bills?type=<?= FIRST_DAY?>')
                 .then(response => {
                     showToast('Notify Open Bill Success', 'success');
                 })
@@ -161,7 +161,7 @@
         });
 
         document.getElementById('notifyClose').addEventListener('click', function() {
-            axios.get('/api/notify-close')
+            axios.get('/api/notify-bills?type=<?= DAY_AFTER?>')
                 .then(response => {
                     showToast('Notify Close Bill Success', 'success');
                 })

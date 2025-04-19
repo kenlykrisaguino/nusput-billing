@@ -55,4 +55,33 @@ class FormatHelper
 
         return $trx;
     }
+
+    public static function formatMonthNameInBahasa(int|string $input): int|string|null
+    {
+        $months = [
+            1  => "Januari",
+            2  => "Februari",
+            3  => "Maret",
+            4  => "April",
+            5  => "Mei",
+            6  => "Juni",
+            7  => "Juli",
+            8  => "Agustus",
+            9  => "September",
+            10 => "Oktober",
+            11 => "November",
+            12 => "Desember"
+        ];
+    
+        if (is_int($input)) {
+            return $months[$input] ?? null;
+        }
+    
+        if (is_string($input)) {
+            $key = array_search(ucfirst(strtolower($input)), $months, true);
+            return $key !== false ? $key : null;
+        }
+    
+        return null;
+    }
 }
