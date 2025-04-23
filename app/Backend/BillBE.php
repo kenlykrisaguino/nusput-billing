@@ -4,6 +4,7 @@ namespace app\Backend;
 
 require_once dirname(dirname(__DIR__)) . '/config/constants.php';
 use App\Helpers\ApiResponse as Response;
+use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
@@ -79,11 +80,11 @@ class BillBE
         $query .= " FROM
                    bills b
                    INNER JOIN users u ON b.user_id = u.id
-                   INNER JOIN user_class c ON u.id = c.user_id
-                   INNER JOIN levels l ON c.level_id = l.id
-                   INNER JOIN grades g ON c.grade_id = g.id
-                   INNER JOIN sections S ON c.section_id = S.id
-                   WHERE TRUE $filterQuery";
+                   LEFT JOIN user_class c ON u.id = c.user_id
+                   LEFT JOIN levels l ON c.level_id = l.id
+                   LEFT JOIN grades g ON c.grade_id = g.id
+                   LEFT JOIN sections S ON c.section_id = S.id
+                   WHERE TRUE AND c.date_left IS NULL $filterQuery";
 
         $query .= "GROUP BY
                   b.virtual_account, u.nis, u.name,
@@ -473,6 +474,16 @@ class BillBE
         $query = "SELECT * FROM fee_categories";
 
         return $this->db->fetchAll($this->db->query($query));
+    }
+
+    public function getPublicFeeCategories()
+    {
+        $query = "SELECT * FROM fee_categories";
+
+        return ApiResponse::success(
+            $this->db->fetchAll($this->db->query($query)),
+            'Success get Additional Fee Categories'
+        );
     }
 
     protected function getBillFormat(int $late = 0)

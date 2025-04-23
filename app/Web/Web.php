@@ -166,6 +166,24 @@ class Web
             case 'notify-bills':
                 $this->billBE->notifyBills();
                 break;
+            case 'get-student-fees':
+                $this->studentBE->getStudentFees();
+                break;
+            case 'get-fee-categories':
+                $this->billBE->getPublicFeeCategories();
+                break;
+            case 'upload-student':
+                $this->studentBE->formCreateStudent();
+                break;
+            case 'upload-students-bulk':
+                $this->studentBE->importStudentsFromXLSX();
+                break;
+            case 'get-student-detail':
+                $this->studentBE->getStudentDetail();
+                break;
+            case 'update-student':
+                $this->studentBE->updateStudent();
+                break;
 
             default:
                 ApiResponse::error('Invalid API endpoint', 404);
@@ -296,7 +314,16 @@ class Web
 
     public function getJournals()
     {
-        return $this->journalBE->getJournals();
+        $params = [
+            'year' => $_GET['year'] ?? '',
+            'semester' => $_GET['semester'] ?? '',
+            'month' => $_GET['month'] ?? '',
+            'level' => $_GET['level'] ?? '',
+            'grade' => $_GET['grade'] ?? '',
+            'section' => $_GET['section'] ?? '',
+            'va' => $_GET['va'] ?? ''
+        ];
+        return $this->journalBE->getJournals($params);
     }
 
     public function getLogs()

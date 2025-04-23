@@ -26,6 +26,20 @@ class Database
         }
     }
 
+    public function getConnection(): mysqli
+    {
+        return $this->connection;
+    }
+
+    public function prepare(string $sql): \mysqli_stmt|false
+    {
+         $stmt = $this->connection->prepare($sql);
+         if (!$stmt) {
+             throw new Exception("Prepare failed: (" . $this->connection->errno . ") " . $this->connection->error . " SQL: " . $sql);
+         }
+         return $stmt;
+    }
+
     public function query(string $sql, array $params = []): mysqli_result|bool
     {
         $stmt = $this->connection->prepare($sql);
@@ -129,7 +143,89 @@ class Database
             return $this->prettifyJsonFields($row);
         }
     }
+
+    public function update(string $table, array $data, array $where): int|false
+    {
+        if (empty($data) || empty($where)) {
+            throw new Exception("update() requires data for SET and WHERE clauses");
+        }
+
+        $setParts = [];
+        $whereParts = [];
+        $values = [];
+        $types = '';
+
+        foreach ($data as $key => $value) {
+            $setParts[] = "`$key` = ?";
+            $values[] = $value;
+            if (is_int($value)) $types .= 'i';
+            elseif (is_double($value)) $types .= 'd';
+            elseif ($value === null) $types .= 's'; // Treat null as string for binding
+            else $types .= 's';
+        }
+
+        foreach ($where as $key => $value) {
+            if ($value === null) {
+                $whereParts[] = "`$key` IS NULL";
+            } else {
+                $whereParts[] = "`$key` = ?";
+                $values[] = $value;
+                if (is_int($value)) $types .= 'i';
+                elseif (is_double($value)) $types .= 'd';
+                else $types .= 's';
+            }
+        }
+
+        $sql = "UPDATE `$table` SET " . implode(', ', $setParts) . " WHERE " . implode(' AND ', $whereParts);
+
+        $stmt = $this->prepare($sql);
+        if (!$stmt) return false;
+
+        $stmt->bind_param($types, ...$values);
+        $executeResult = $stmt->execute();
+        $affectedRows = $stmt->affected_rows; // Get number of affected rows
+        $stmt->close();
+
+        return $executeResult ? $affectedRows : false;
+    }
     
+    public function delete(string $table, array $where): int|false
+    {
+        if (empty($where)) {
+            throw new Exception("delete() requires a WHERE clause to prevent deleting all rows");
+        }
+
+        $whereParts = [];
+        $values = [];
+        $types = '';
+
+        foreach ($where as $key => $value) {
+             if ($value === null) {
+                 $whereParts[] = "`$key` IS NULL";
+             } else {
+                 $whereParts[] = "`$key` = ?";
+                 $values[] = $value;
+                 if (is_int($value)) $types .= 'i';
+                 elseif (is_double($value)) $types .= 'd';
+                 else $types .= 's';
+             }
+        }
+
+        $sql = "DELETE FROM `$table` WHERE " . implode(' AND ', $whereParts);
+
+        $stmt = $this->prepare($sql);
+        if (!$stmt) return false;
+
+        if (!empty($values)) {
+            $stmt->bind_param($types, ...$values);
+        }
+
+        $executeResult = $stmt->execute();
+        $affectedRows = $stmt->affected_rows;
+        $stmt->close();
+
+        return $executeResult ? $affectedRows : false;
+    }
 
     public function __destruct()
     {

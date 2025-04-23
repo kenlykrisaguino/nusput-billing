@@ -25,6 +25,8 @@ define('ACADEMIC_YEAR_EIGHT_FORMAT', '2');          // "20242025"
 define('ACADEMIC_YEAR_FOUR_SLASH_FORMAT', '3');     // "24/25"
 define('ACADEMIC_YEAR_FOUR_FORMAT', '3');           // "2425"
 
+define('FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS', '1');
+
 define('YEAR_FOUR_DIGIT_FORMAT', '4');  // 2025
 define('YEAR_TWO_DIGIT_FORMAT', '2');   // 25
 

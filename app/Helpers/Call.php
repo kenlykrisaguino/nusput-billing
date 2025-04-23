@@ -113,4 +113,28 @@ class Call
                 return "";
         }
     }
+
+    public static function getFirstDay($details, $type = FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS)
+    {
+        switch($type){
+            case FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS:
+                return self::firstDayFromAcademicYear($details);
+            default:
+                return NULL_VALUE;
+        }
+    }
+
+    private static function firstDayFromAcademicYear($details)
+    {
+        $academic_year = $details['year'];
+        $semester = $details['semester'];
+        $month = $details['month'];
+
+        $years = explode("/", $academic_year);
+        $year = $years[intval($semester) - 1];
+
+        $firstDay = "$year/$month/01";
+
+        return $firstDay;
+    }
 }
