@@ -26,9 +26,28 @@ class StudentBE
         'disabled' => BILL_STATUS_DISABLED,
     ];
 
+    private $month_translate = [
+        'January' => 'Januari',
+        'February' => 'Februari',
+        'March' => 'Maret',
+        'April' => 'April',
+        'May' => 'Mei',
+        'June' => 'Juni',
+        'July' => 'Juli',
+        'August' => 'Agustus',
+        'September' => 'September',
+        'October' => 'Oktober',
+        'November' => 'November',
+        'December' => 'Desember',
+    ];
+
     public function __construct($database)
     {
         $this->db = $database;
+    }
+
+    protected function translateMonthToIndonesia($month) {
+        return strtr($month, $this->month_translate);
     }
 
     public function getStudents()
@@ -571,7 +590,7 @@ class StudentBE
                     c.virtual_account, c.date_joined, c.monthly_fee,
                     l.name, g.name, S.name
                   ";
-        $result = $this->db->fetchAll($this->db->query($query));
+        $result = $this->db->fetchAssoc($this->db->query($query));
 
         return $result;
     }
@@ -580,25 +599,57 @@ class StudentBE
     {
         $status = $this->status;
 
+        $params = [
+            'id' => $user_id,
+            'academic_year' => $_GET['year-filter'] ??  Call::academicYear(),
+            'semester' => $_GET['semester-filter'] ??  Call::semester() == SECOND_SEMESTER ? 2 : 1
+        ];
+
+        $paramQuery = " AND b.user_id = $params[id]";
+
+        if($params['academic_year'] != NULL_VALUE){
+            $academicYear = explode('/', $params['academic_year'], 2);
+            $years = [
+                'min' => "$academicYear[0]-07-01",
+                'max' => "$academicYear[1]-06-30"
+            ];
+
+            $paramQuery .= " AND b.payment_due BETWEEN '$years[min]' AND '$years[max]' ";
+        }
+
+        if($params['semester'] != NULL_VALUE){
+            $year = explode('/', $params['academic_year'], 2);
+
+            if ($params['semester'] == 2) {
+                $paramQuery .= " AND YEAR(b.payment_due) = $year[1]";
+            } else {
+                $paramQuery .= " AND YEAR(b.payment_due) = $year[0]";
+            }
+        }
+
         $query = "SELECT
-                    u.nis, u.name, u.virtual_account,
-                    CONCAT(
-                        COALESCE(l.name, ''),
-                        ' ',
-                        COALESCE(g.name, ''),
-                        ' ',
-                        COALESCE(S.name, '')
-                    ) AS class_name,
+                    DATE_FORMAT(b.payment_due, '%M %Y') AS `month`,
+                    b.trx_amount + b.late_fee AS `bills`,
+                    b.trx_status AS `trx_status`,
+                    b.trx_detail AS `detail`,
+                    p.details AS `payment_detail`,
+                    p.trx_timestamp AS `paid_at`
                   FROM
-                    users u JOIN
-                    user_class c ON c.user_id = u.id JOIN
-                    levels l ON c.level_id = l.id JOIN
-                    grades g ON c.grade_id = g.id JOIN
-                    sections s ON c.level_id = s.id
-                  WHERE
-                    u.id = '$user_id'
+                    bills b LEFT JOIN                 
+                    payments p ON b.id = p.bill_id LEFT JOIN
+                    users u ON u.id = b.user_id LEFT JOIN
+                    user_class c ON u.id = c.user_id LEFT JOIN 
+                    levels l ON c.level_id = l.id LEFT JOIN
+                    grades g ON c.grade_id = g.id LEFT JOIN
+                    sections s ON c.section_id = s.id
+                   WHERE
+                     TRUE $paramQuery
                   ";
         $result = $this->db->fetchAll($this->db->query($query));
+
+        foreach($result as &$r){
+            $r['month'] = $this->translateMonthToIndonesia($r['month']);
+        }
 
         return $result;
     }

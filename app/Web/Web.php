@@ -360,6 +360,10 @@ class Web
         }
     }
 
+    public function studentPage(){
+        return $this->studentBE->studentPage();
+    }
+
     public function back()
     {
         header('Location: ' . $_SERVER['HTTP_REFERER']);
