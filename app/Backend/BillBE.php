@@ -29,12 +29,12 @@ class BillBE
         $this->db = $database;
     }
 
-    public function getBills($params = [])
+    public function getBills()
     {
         $status = $this->status;
 
-        $params['semester'] = $params['semester'] ?? Call::semester();
-        $params['academic_year'] = $params['academic_year'] ?? Call::academicYear();
+        $params['semester'] = $_GET['semester-filter'] ?? Call::semester();
+        $params['academic_year'] = $_GET['year-filter'] ?? Call::academicYear();
 
         $filterYear = $params['semester'] == SECOND_SEMESTER ? substr($params['academic_year'], -4) : substr($params['academic_year'], -4) - 1;
         $finalMonth = $params['semester'] == SECOND_SEMESTER ? 6 : 12;
@@ -75,6 +75,14 @@ class BillBE
                     )";
         }
 
+        if ($params['semester'] == SECOND_SEMESTER){
+            $min = "$filterYear-01-01";
+            $max = "$filterYear-06-30";
+        } else {
+            $min = "$filterYear-07-01";
+            $max = "$filterYear-12-31";
+        }
+
         $query .= implode(', ', $monthQuery);
 
         $query .= " FROM
@@ -84,7 +92,7 @@ class BillBE
                    LEFT JOIN levels l ON c.level_id = l.id
                    LEFT JOIN grades g ON c.grade_id = g.id
                    LEFT JOIN sections S ON c.section_id = S.id
-                   WHERE TRUE AND c.date_left IS NULL $filterQuery";
+                   WHERE TRUE AND c.date_left IS NULL AND b.payment_due BETWEEN '$min' AND '$max' $filterQuery";
 
         $query .= "GROUP BY
                   b.virtual_account, u.nis, u.name,

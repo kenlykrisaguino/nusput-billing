@@ -31,15 +31,31 @@ class PaymentBE
         $this->db = $database;
     }
 
-    public function getPayments($params = [])
+    public function getPayments()
     {        
-        $query = "SELECT p.id, u.name AS payment, p.trx_amount, p.trx_timestamp, p.details
-                FROM payments AS p INNER JOIN users AS u ON p.user_id = u.id
+        $query = "SELECT p.id, u.name AS payment, p.trx_amount, p.trx_timestamp, p.details, c.virtual_account
+                FROM payments AS p INNER JOIN users AS u ON p.user_id = u.id LEFT JOIN user_class c ON c.user_id = u.id
                 WHERE TRUE ";
 
-        if (!empty($params['search'])) {
-            $search = $params['search'];
+        if (!empty($_GET['search'])) {
+            $search = $_GET['search'];
             $query .= " AND u.name LIKE '%$search%'";
+        }
+
+        if (!empty($_GET['year-filter'])) {
+            $year = $_GET['year-filter'];
+            $academicYear = explode('/', $year, 2);
+
+            $years = [
+                'min' => "$academicYear[0]-07-01",
+                'max' => "$academicYear[1]-06-30"
+            ];
+
+            $query .= " AND p.trx_timestamp BETWEEN '$years[min]' AND '$years[max]'";
+        }
+        if (!empty($_GET['month-filter'])) {
+            $month = $_GET['month-filter'];
+            $query .= " AND MONTH(p.trx_timestamp) = $month";
         }
 
         $result = $this->db->query($query);

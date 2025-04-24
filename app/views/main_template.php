@@ -17,7 +17,7 @@
 </head>
 
 <body>
-    <div class="w-screen h-screen bg-sky-100">
+    <div class="w-screen min-h-screen bg-sky-100 pb-8">
         <div id="header" class="w-screen p-4 flex justify-center flex-col items-center gap-4">
             <div id="logo" class="flex items-center gap-4">
                 <img src="/assets/img/nusaputera.png" alt="logo" class="h-12" />

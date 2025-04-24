@@ -560,7 +560,6 @@ async function editStudent(userId) {
     const monthSelect = modal.querySelector("#edit-month");
     const currentYear = new Date().getFullYear();
     const yearOptions = [];
-    // Ensure year value is just the starting year if backend expects that
     for (let y = currentYear + 1; y >= currentYear - 5; y--) {
       yearOptions.push({ value: `${y}/${y + 1}`, text: `${y}/${y + 1}` });
     }
@@ -877,16 +876,16 @@ async function submitEditStudent(button) {
     "Submitting Edit Form Data (JSON) to:",
     url,
     JSON.stringify(dataToSend, null, 2)
-  ); 
+  );
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json", 
+        "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(dataToSend), 
+      body: JSON.stringify(dataToSend),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -895,7 +894,7 @@ async function submitEditStudent(button) {
     }
     alert(result.message || "Data siswa berhasil diperbarui!");
     closeModal("edit-student");
-    console.info(result)
+    console.info(result);
     // location.reload();
   } catch (error) {
     console.error("Fetch Error:", error);
@@ -912,6 +911,7 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Loaded! Initializing script...");
   const createStudentModal = document.getElementById("create-student");
   const editStudentModal = document.getElementById("edit-student");
+  const filterStudentModal = document.getElementById("filter-student");
   if (createStudentModal) {
     const levelSelectCreate = createStudentModal.querySelector("#level");
     const gradeSelectCreate = createStudentModal.querySelector("#grade");
@@ -961,6 +961,33 @@ document.addEventListener("DOMContentLoaded", () => {
           event.target.value,
           gradeSelectEdit,
           sectionSelectEdit
+        );
+      });
+    }
+  }
+
+  if (filterStudentModal) {
+    const levelSelectFilter = filterStudentModal.querySelector("#level-filter");
+    const gradeSelectFilter = filterStudentModal.querySelector("#grade-filter");
+    const sectionSelectFilter =
+      filterStudentModal.querySelector("#section-filter");
+    if (levelSelectFilter && gradeSelectFilter && sectionSelectFilter) {
+      populateLevels(levelSelectFilter, gradeSelectFilter, sectionSelectFilter);
+      levelSelectFilter.addEventListener("change", (event) => {
+        populateGrades(
+          event.target.value,
+          levelSelectFilter,
+          gradeSelectFilter,
+          sectionSelectFilter
+        );
+      });
+      gradeSelectFilter.addEventListener("change", (event) => {
+        const selectedLevelId = levelSelectFilter.value;
+        populateSections(
+          selectedLevelId,
+          event.target.value,
+          gradeSelectFilter,
+          sectionSelectFilter
         );
       });
     }

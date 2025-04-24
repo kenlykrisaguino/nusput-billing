@@ -13,7 +13,7 @@ class RecapBE
         $this->db = $database;
     }
 
-    public function getRecaps($params = [])
+    public function getRecaps()
     {        
         $status = [
             'paid' => BILL_STATUS_PAID,
@@ -25,13 +25,13 @@ class RecapBE
         ];
 
         $params = [
-            'search' => $params['search'] ??  NULL_VALUE,
-            'academic_year' => $params['filter']['academic_year'] ??  NULL_VALUE,
-            'semester' => $params['filter']['semester'] ??  NULL_VALUE,
-            'month' => $params['filter']['month'] ??  NULL_VALUE,
-            'level' => $params['filter']['level'] ??  NULL_VALUE,
-            'grade' => $params['filter']['grade'] ??  NULL_VALUE,
-            'section' => $params['filter']['section'] ??  NULL_VALUE,
+            'search' => $_GET['search'] ??  NULL_VALUE,
+            'academic_year' => $_GET['year-filter'] ??  NULL_VALUE,
+            'semester' => $_GET['semester-filter'] ??  NULL_VALUE,
+            'month' => $_GET['month-filter'] ??  NULL_VALUE,
+            'level' => $_GET['level-filter'] ??  NULL_VALUE,
+            'grade' => $_GET['grade-filter'] ??  NULL_VALUE,
+            'section' => $_GET['section-filter'] ??  NULL_VALUE,
         ];
 
         $paramQuery = NULL_VALUE;
@@ -41,20 +41,22 @@ class RecapBE
         }
 
         if($params['academic_year'] != NULL_VALUE){
-            $yearEnd = substr($params['academic_year'], -4);
-            $yearStart = $yearEnd - 1;
-            $paramQuery .= " AND ((MONTH(b.payment_due) >= 7 AND YEAR(b.payment_due) = $yearStart)
-                             OR  (MONTH(b.payment_due) <= 6 AND YEAR(b.payment_due) = $yearEnd)) ";
+            $academicYear = explode('/', $params['academic_year'], 2);
+            $years = [
+                'min' => "$academicYear[0]-07-01",
+                'max' => "$academicYear[1]-06-30"
+            ];
+
+            $paramQuery .= " AND b.payment_due BETWEEN '$years[min]' AND '$years[max]' ";
         }
 
         if($params['semester'] != NULL_VALUE){
-            $yearEnd = substr($params['academic_year'], -4);
-            $yearStart = $yearEnd - 1;
+            $year = explode('/', $params['academic_year'], 2);
 
-            if ($params['semester'] == SECOND_SEMESTER) {
-                $paramQuery .= " AND YEAR(b.payment_due) = $yearEnd";
+            if ($params['semester'] == 2) {
+                $paramQuery .= " AND YEAR(b.payment_due) = $year[1]";
             } else {
-                $paramQuery .= " AND YEAR(b.payment_due) = $yearStart";
+                $paramQuery .= " AND YEAR(b.payment_due) = $year[0]";
             }
         }
 
@@ -111,10 +113,8 @@ class RecapBE
                     ' ', 
                     COALESCE(s.name, '')
                   )";
-
+        
         $result = $this->db->query($query);
         return $this->db->fetchAll($result);
     }
-
-    
 }

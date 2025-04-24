@@ -31,7 +31,7 @@ class StudentBE
         $this->db = $database;
     }
 
-    public function getStudents($params = [])
+    public function getStudents()
     {
         $query = "SELECT
                     u.id, u.nis, u.name, l.name AS level, g.name AS grade, s.name AS section,
@@ -50,8 +50,8 @@ class StudentBE
                     u.deleted_at IS NULL
                   ";
 
-        if (!empty($params['search'])) {
-            $search = $params['search'];
+        if (!empty($_GET['search'])) {
+            $search = $_GET['search'];
             $query .= " AND (
                         u.nis LIKE '%$search%' OR
                         u.name LIKE '%$search%' OR
@@ -60,6 +60,20 @@ class StudentBE
                         u.parent_phone LIKE '%$search%' OR
                         c.virtual_account LIKE '%$search%'
                     )";
+        }
+        if (!empty($_GET['level-filter'])) {
+            $level = $_GET['level-filter'];
+            $query .= " AND c.level_id = $level";
+        }
+
+        if (!empty($_GET['grade-filter'])) {
+            $grade = $_GET['grade-filter'];
+            $query .= " AND c.grade_id = $grade";
+        }
+        
+        if (!empty($_GET['section-filter'])) {
+            $section = $_GET['section-filter'];
+            $query .= " AND c.section_id = $section";
         }
 
         $query .= " GROUP BY
