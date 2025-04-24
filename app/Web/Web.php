@@ -184,6 +184,9 @@ class Web
             case 'update-student':
                 $this->studentBE->updateStudent();
                 break;
+            case 'import-payment':
+                $this->paymentBE->importPaymentsFromXLSX();
+                break;
 
             default:
                 ApiResponse::error('Invalid API endpoint', 404);

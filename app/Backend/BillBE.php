@@ -50,7 +50,7 @@ class BillBE
                   ) AS class_name,
                   SUM(CASE WHEN b.trx_status = '$status[late]' THEN c.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status = '$status[paid]' OR b.trx_status = '$status[late]' THEN b.trx_amount ELSE 0 END) AS penerimaan,
                   SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status IN ('$status[active]', '$status[unpaid]') THEN b.trx_amount ELSE 0 END) AS tagihan,
-                  (SELECT SUM(late_fee) FROM bills nb WHERE nb.virtual_account = b.virtual_account AND MONTH(nb.payment_due) <= $finalMonth AND YEAR(nb.payment_due)<=$filterYear) AS tunggakan, ";
+                  (SELECT SUM(late_fee) FROM bills nb WHERE nb.virtual_account = b.virtual_account AND MONTH(nb.payment_due) <= $finalMonth AND YEAR(nb.payment_due)<=$filterYear AND nb.trx_status = '$status[unpaid]') AS tunggakan, ";
 
         $months = Call::monthNameSemester($params['semester']);
 
@@ -94,7 +94,7 @@ class BillBE
                     COALESCE(g.name, ''),
                     ' ',
                     COALESCE(S.name, '')
-                  ) ";
+                  )";
 
         $result = $this->db->query($query);
         $data = $this->db->fetchAll($result);

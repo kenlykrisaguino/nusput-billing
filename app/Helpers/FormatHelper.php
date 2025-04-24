@@ -5,9 +5,9 @@ require_once dirname(dirname(__DIR__)) . '/config/constants.php';
 
 class FormatHelper
 {
-    public static function formatRupiah($amount)
+    public static function formatRupiah($amount = 0)
     {
-        return 'Rp ' . number_format($amount, 0, ',', '.');
+        return 'Rp ' . number_format((float)$amount, 0, ',', '.');
     }
 
     public static function formatVA($level, $nis)

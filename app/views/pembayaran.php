@@ -2,7 +2,7 @@
     <div class="flex justify-between w-full mb-2">
         <h1 class="text-lg font-semibold text-slate-800">Pembayaran</h1>
         <div class="flex gap-2">
-            <div class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold" onclick="document.getElementById('create-payment').classList.remove('hidden')">Import Pembayaran</div>
+            <div class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold" onclick="document.getElementById('import-payment').classList.remove('hidden')">Import Pembayaran</div>
             <form action="" method="get">
                 <label for="search" class="mb-2 text-xs font-medium text-blue-900 sr-only">Search</label>
                 <div class="relative">
@@ -21,8 +21,8 @@
     
     <hr class="mb-2">
 
-    <div id="create-payment" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-        <form id="create-payment-form"
+    <div id="import-payment" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
+        <form id="import-payment-form" method="post"
             class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
             <h3 class="text-sm font-bold mb-2 text-slate-700">Import Pembayaran</h3>
 
@@ -34,49 +34,19 @@
                         class="text-blue-400 hover:text-blue-500" href="/format?type=payment">disini</a></small>
             </div>
 
-            <button onclick="submitPayment(this)"
+            <button onclick="importPaymentXLSX(this)" type="submit"
                 class="mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
                 Import
             </button>
 
-            <button onclick="closeModal('create-payment')"
+            <button onclick="closeModal('import-payment')" type="button"
                 class="mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
                 Batal
             </button>
             
 
         </form>
-        <script>
-                const closeModal = (id) => {
-                    const modal = document.getElementById(id)
 
-                    modal.classList.add('hidden')
-
-                    const inputs = modal.querySelectorAll('input')
-                    const selects = modal.querySelectorAll('select')
-                    const textareas = modal.querySelectorAll('textarea')
-
-                    inputs.forEach(input => {
-                        if (input.type === 'file') {
-                            input.value = null
-                        } else {
-                            input.value = ''
-                        }
-                    })
-
-                    selects.forEach(select => {
-                        select.selectedIndex = 0
-                    })
-
-                    textareas.forEach(textarea => {
-                        textarea.value = ''
-                    })
-                }
-
-                const submitPayment = (this) => {
-                    closeModal('create-payment')
-                }
-        </script>
     </div>
 
     
@@ -107,7 +77,7 @@
                     <?php foreach($transactions as $trx) :?>
                     <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
                         <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
-                            <?= $trx['student'] ?>
+                            <?= $trx['payment'] ?>
                         </th>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <?= FormatHelper::formatRupiah($trx['trx_amount']) ?>
@@ -128,3 +98,4 @@
         </table>
     </div>
 </div>
+<script src="/js/pages/pembayaran.js"></script>
