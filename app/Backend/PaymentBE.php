@@ -4,6 +4,7 @@ namespace app\Backend;
 
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
+use App\Helpers\FormatHelper;
 use DateTime;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -235,6 +236,16 @@ class PaymentBE
             if((float)$billAmounts[$va] == (float)$detail['trxAmount']){
                 $paymentData['va'][] = $va;
                 $paymentData['detail'][] = $detail;
+            } else {
+                $requiredAmount = FormatHelper::formatRupiah((float)$billAmounts[$va]);
+                $inputtedAmount = FormatHelper::formatRupiah((float)$detail['trxAmount']);
+                $errorRowsData[] = [
+                    'original_data' => [
+                        $detail['nis'], $detail['va'], $detail['trxAmount'],
+                        $detail['notes'], $detail['timestamp']
+                    ],
+                    'errors' => "Invalid Value! needing $requiredAmount, but only inputed amount $inputtedAmount",
+                ];
             }
         }
 
@@ -294,6 +305,43 @@ class PaymentBE
             $paymentFinal[] = $data;
         }
 
+        if(!empty($errorRowsData)){
+            $errorSpreadsheet = new Spreadsheet();
+            $errorSheet = $errorSpreadsheet->getActiveSheet();
+            $outputHeaders = array_values($originalHeaders);
+            $outputHeaders[] = 'Errors';
+            $errorSheet->fromArray([$outputHeaders], null, 'A1');
+
+            $errorRowIndex = 2;
+            foreach ($errorRowsData as $errorDetail) {
+                $outputRow = $errorDetail['original_data'];
+                $outputRow[] = $errorDetail['errors'];
+                $errorSheet->fromArray($outputRow, null, 'A' . $errorRowIndex, true);
+                $errorRowIndex++;
+            }
+
+            $highestColumn = $errorSheet->getHighestColumn();
+            foreach (range('A', $highestColumn) as $columnID) {
+                $errorSheet->getColumnDimension($columnID)->setAutoSize(true);
+            }
+
+            $headerStyle = [
+                'font' => ['bold' => true],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            ];
+
+            $errorSheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
+
+            $writer = new Xlsx($errorSpreadsheet);
+            if (ob_get_length()) {
+                ob_end_clean();
+            }
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="import_payments_errors.xlsx"');
+            header('Cache-Control: max-age=0');
+            $writer->save('php://output');
+        }
+
         try{
             $this->db->beginTransaction();
             
@@ -303,20 +351,9 @@ class PaymentBE
             }
 
             $now = Call::timestamp();
-            $placeholders = implode(',', array_fill(0, count($billId), '?'));
             $b = implode(',', $billId);
 
-            $params = array_merge(
-                [
-                    $status['paid'],
-                    $status['paid'],
-                    $now
-                ],
-                $billId
-            );
-
             $q = "UPDATE bills b SET b.trx_status = '$status[paid]', b.trx_detail = JSON_SET(b.trx_detail, '$.status', '$status[paid]', '$.payment_date', '$now') WHERE b.id IN ($b)";
-
 
             $updateBillStmt = $this->db->prepare($q);
             if(!$updateBillStmt){
