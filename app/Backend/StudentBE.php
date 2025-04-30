@@ -676,8 +676,11 @@ class StudentBE
         $params = [
             'id' => $user_id,
             'academic_year' => $_GET['year-filter'] ?? Call::academicYear(),
-            'semester' => $_GET['semester-filter'] ?? Call::semester() == SECOND_SEMESTER ? 2 : 1,
+            'semester' => $_GET['semester-filter'] ?? Call::semester(),
         ];
+
+        $params['semester'] = $params['semester'] == 1 || $params['semester'] == FIRST_SEMESTER ? FIRST_SEMESTER : SECOND_SEMESTER;
+
 
         $paramQuery = " AND b.user_id = $params[id]";
 
@@ -694,7 +697,7 @@ class StudentBE
         if ($params['semester'] != NULL_VALUE) {
             $year = explode('/', $params['academic_year'], 2);
 
-            if ($params['semester'] == 2) {
+            if ($params['semester'] == SECOND_SEMESTER) {
                 $paramQuery .= " AND YEAR(b.payment_due) = $year[1]";
             } else {
                 $paramQuery .= " AND YEAR(b.payment_due) = $year[0]";
@@ -707,7 +710,9 @@ class StudentBE
                     b.trx_status AS `trx_status`,
                     b.trx_detail AS `detail`,
                     p.details AS `payment_detail`,
-                    p.trx_timestamp AS `paid_at`
+                    p.trx_timestamp AS `paid_at`,
+                    p.user_id AS `user_id`,
+                    p.bill_id AS `bill_id`
                   FROM
                     bills b LEFT JOIN
                     payments p ON b.id = p.bill_id LEFT JOIN

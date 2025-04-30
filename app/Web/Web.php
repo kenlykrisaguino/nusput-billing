@@ -83,7 +83,11 @@ class Web
         $page = $segments[0] ?? 'dashboard';
 
         if ($page === 'invoice') {
-            $this->paymentBE->getPublicInvoice($segments);
+            $viewFile = __DIR__ . "/../views/invoice.php";
+            $web = $this;
+            $data['web'] = $web;
+            extract($data);
+            include $viewFile;
             return;
         }
 
@@ -173,6 +177,9 @@ class Web
                 break;
             case 'import-payment':
                 $this->paymentBE->importPaymentsFromXLSX();
+                break;
+            case 'export-invoice':
+                $this->paymentBE->exportPublicInvoice($segments);
                 break;
 
             default:

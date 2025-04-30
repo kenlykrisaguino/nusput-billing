@@ -132,7 +132,20 @@ $status = [
             <div id="<?= $modalId ?>"
                 class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
                 <div class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
-                    <h3 class="text-sm font-bold mb-2 text-slate-700">Detail Tagihan <?= $payment['month'] ?></h3>
+                    <div class="flex justify-between items-center mb-2 ">
+                        <h3 class="text-sm font-bold text-slate-700">Detail Tagihan <?= $payment['month'] ?></h3>
+                        <?php if($payment['paid_at'] != ""):?>
+                            <?php 
+                            $url = $_SERVER['HTTP_HOST'];
+                            $code = $this->paymentBE->generateInvoiceURL($payment['user_id'], $payment['bill_id']);    
+                            $full = "http://$url/invoice/$code";
+                            ?>
+                            <a href="<?= $full?>" target="_blank"
+                                class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                                <i class="fa-regular fa-file-lines"></i> Buka Invoice
+                            </a>
+                        <?php endif?>
+                    </div>
 
                     <?php if ($detail && is_array($detail)) : ?>
                     <ul class="text-xs text-slate-700 space-y-1 max-h-64 overflow-y-auto mb-3">

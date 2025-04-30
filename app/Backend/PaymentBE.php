@@ -12,9 +12,11 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Exception;
 use LDAP\Result;
+use Mpdf\Mpdf;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use Mpdf\Output\Destination;
 
 class PaymentBE
 {
@@ -419,12 +421,12 @@ class PaymentBE
         }
     }
 
-    protected function generateInvoiceURL($user, $bill)
+    public function generateInvoiceURL($user, $bill)
     {
         $key = $_ENV['ENCRYPTION_KEY'];
         $method = $_ENV['ENCRYPTION_METHOD'];
 
-        $string = "$user||$bill";
+        $string = "$user|-|$bill";
 
         $ivLength = openssl_cipher_iv_length($method);
         $iv = openssl_random_pseudo_bytes($ivLength);
@@ -448,7 +450,7 @@ class PaymentBE
         $cipherText = substr($data, $ivLength);
 
         $string = openssl_decrypt($cipherText, $method, $key, 0, $iv);
-        
+
         if(!$string){
             return [
                 'status' => false,
@@ -456,7 +458,15 @@ class PaymentBE
             ];
         }
 
-        list($user, $bill) = explode("||", $string);
+        // list($user, $bill) = explode("|-|", $string);
+        $encrypted = explode("|-|", $string);
+        if(count($encrypted) != 2){
+            return [
+                'status' => false,
+                'error' => "Invalid Details"
+            ];
+        }
+        list($user, $bill) = $encrypted;
 
         $query = "SELECT
                     details
@@ -483,8 +493,190 @@ class PaymentBE
 
     public function getPublicInvoice($segments)
     {
-        $cyper = $segments[1];
+        array_shift($segments);
+        $cyper = implode("/", $segments);
         $data = $this->decryptInvoiceCode($cyper);
-        echo ApiResponse::error($data);
+        return $data;
+    }
+
+    public function exportPublicInvoice($segments)
+    {
+        array_shift($segments);
+        $cyper = implode("/", $segments);
+        $decryptionResult = $this->decryptInvoiceCode($cyper);
+
+        if (!$decryptionResult['status']) {
+            return ApiResponse::error("Code decryption error", 404);
+            exit;
+        }
+
+        $paymentDetailsJson = $decryptionResult['details']['details'] ?? null;
+
+        if ($paymentDetailsJson === null) {
+            return ApiResponse::error("Payment details JSON is missing for invoice code");
+            exit;
+        }
+
+        $invoiceData = json_decode($paymentDetailsJson, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return ApiResponse::error("Failed to parse payment details JSON");
+        }
+
+        try {
+            $mpdf = new Mpdf([
+                'format' => 'A4',
+                'margin_left' => 15,
+                'margin_right' => 15,
+                'margin_top' => 20,
+                'margin_bottom' => 20,
+                'tempDir' => sys_get_temp_dir() . '/mpdf' 
+            ]);
+
+            $studentName = htmlspecialchars($invoiceData['name'] ?? '');
+            $studentClass = htmlspecialchars($invoiceData['class'] ?? '');
+            $virtualAccount = htmlspecialchars($invoiceData['virtual_account'] ?? '');
+            $confirmationDate = '';
+             if (isset($invoiceData['confirmation_date'])) {
+                 try {
+                     $dt = new DateTime($invoiceData['confirmation_date']);
+                     $confirmationDate = $dt->format('d F Y H:i:s');
+                 } catch (Exception $e) {
+                      $confirmationDate = htmlspecialchars($invoiceData['confirmation_date']) . ' (Invalid Format)';
+                      error_log("Invalid date format in confirmation_date for PDF: " . $invoiceData['confirmation_date']);
+                 }
+             }
+            $totalPayment = isset($invoiceData['total_payment']) ? FormatHelper::formatRupiah((float)$invoiceData['total_payment']) : '';
+            $items = $invoiceData['items'] ?? [];
+            $notes = isset($invoiceData['notes']) ? nl2br(htmlspecialchars($invoiceData['notes'])) : '';
+            $displayCode = htmlspecialchars($cyper);
+
+            $html = <<<HTML
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>Invoice {$studentName}</title>
+                <style>
+                    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #333; }
+                    .container { padding: 10px; }
+                    .header { border-bottom: 2px solid #6b7280; margin-bottom: 24px; padding-bottom: 12px; }
+                    .header-flex { display: flex; justify-content: space-between; align-items: flex-start; } /* Basic flex sim */
+                    .invoice-title h1 { font-size: 1.5rem; font-weight: bold; margin: 0; }
+                    .invoice-title p { font-size: 0.75rem; color: #3b82f6; font-style: italic; margin: 4px 0 0 0; }
+                    .payment-date { text-align: right; font-weight: 600; color: #9ca3af; }
+                    .payment-date p.label { font-size: 0.75rem; margin: 0; }
+                    .payment-date p.date { font-size: 0.875rem; margin: 4px 0 0 0; color: #4b5563; }
+                    .student-details { margin-bottom: 16px; font-size: 0.875rem; }
+                    .student-details table td { padding: 2px 8px 2px 0; vertical-align: top; }
+                    .student-details table td:first-child { font-weight: normal; } /* Adjusted from original bold */
+                    .items-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.875rem; }
+                    .items-table thead { background-color: #f9fafb; }
+                    .items-table th { text-transform: uppercase; font-size: 0.75rem; color: #374151; border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; }
+                    .items-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+                    .items-table td { padding: 10px 12px; vertical-align: top; }
+                    .items-table th.text-right, .items-table td.text-right { text-align: right; }
+                    .items-table th.text-center, .items-table td.text-center { text-align: center; }
+                    .items-table tfoot { background-color: #f9fafb; font-weight: bold; }
+                    .items-table tfoot th { padding: 10px 12px; border-top: 1px solid #e5e7eb; color: #374151; }
+                    .items-table tfoot th.total-label { text-transform: uppercase; font-size: 0.75rem; text-align: right; }
+                    .items-table tfoot th.total-amount { font-size: 1rem; text-align: right; }
+                    .notes { margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; font-size: 9pt; color: #555; }
+                    .footer { text-align: center; margin-top: 30px; font-size: 8pt; color: #888; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <table width="100%" style="border-collapse: collapse;">
+                            <tr>
+                                <td style="vertical-align: top;">
+                                    <div class="invoice-title">
+                                        <h1>Invoice Pembayaran SPP</h1>
+                                        <p>#{$displayCode}</p>
+                                    </div>
+                                </td>
+                                <td style="vertical-align: top; text-align: right;">
+                                    <div class="payment-date">
+                                        <p class="label">Tanggal Pembayaran Masuk Sistem</p>
+                                        <p class="date">{$confirmationDate}</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="student-details">
+                        <table>
+                            <tbody>
+                                <tr><td>Nama</td><td>: {$studentName}</td></tr>
+                                <tr><td>Kelas</td><td>: {$studentClass}</td></tr>
+                                <tr><td>Virtual Account</td><td>: {$virtualAccount}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <table class="items-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Nama</th>
+                                <th scope="col" class="text-center">Periode</th>
+                                <th scope="col" class="text-right">Biaya</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            HTML;
+
+            if (!empty($items)) {
+                foreach ($items as $item) {
+                    $itemNameRaw = htmlspecialchars($item['item_name'] ?? '');
+                    $itemDisplayName = $itemNameRaw;
+                     if ($itemNameRaw == "monthly_fee") {
+                         $itemDisplayName = "Tagihan Bulanan";
+                     } elseif ($itemNameRaw == "late_fee") {
+                         $itemDisplayName = "Biaya Keterlambatan";
+                     }
+                    $itemAmount = isset($item['amount']) ? FormatHelper::formatRupiah((float)$item['amount']) : '';
+                    $billingMonth = htmlspecialchars($item['billing_month'] ?? '');
+                    $html .= <<<HTML
+                            <tr>
+                                <td scope="row" style="font-weight: 500; color: #111827; white-space: nowrap;">{$itemDisplayName}</td>
+                                <td class="text-center">{$billingMonth}</td>
+                                <td class="text-right">{$itemAmount}</td>
+                            </tr>
+                    HTML;
+                }
+            } else {
+                $html .= "<tr><td colspan='3' style='text-align: center; padding: 20px;'>No itemized details available.</td></tr>";
+            }
+
+            $html .= <<<HTML
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th scope="col" colspan="2" class="total-label">Total Pembayaran</th>
+                                <th scope="col" class="total-amount text-right">{$totalPayment}</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+            HTML;
+
+            $mpdf->WriteHTML($html);
+
+            if (ob_get_length()) {
+                ob_end_clean();
+            }
+
+            $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $studentName);
+            $fileName = "Invoice_" . $safeName . "_" . date('Ymd') . ".pdf";
+
+            $mpdf->Output($fileName, Destination::DOWNLOAD);
+
+            exit;
+
+        } catch (\Mpdf\MpdfException $e) {
+            return ApiResponse::error($e->getMessage());
+        } catch (\Exception $e) {
+            return ApiResponse::error($e->getMessage());
+        }
     }
 }

@@ -36,6 +36,8 @@ class BillBE
         $params['semester'] = $_GET['semester-filter'] ?? Call::semester();
         $params['academic_year'] = $_GET['year-filter'] ?? Call::academicYear();
 
+        $params['semester'] = $params['semester'] == 1 || $params['semester'] == FIRST_SEMESTER ? FIRST_SEMESTER : SECOND_SEMESTER;
+
         $filterYear = $params['semester'] == SECOND_SEMESTER ? substr($params['academic_year'], -4) : substr($params['academic_year'], -4) - 1;
         $finalMonth = $params['semester'] == SECOND_SEMESTER ? 6 : 12;
 
