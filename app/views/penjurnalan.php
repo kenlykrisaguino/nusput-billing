@@ -4,7 +4,7 @@
 
 <?php
 use App\Helpers\FormatHelper;
-$journals = $this->getJournals();
+$journals = $this->journalBE->getJournals();
 
 ?>
 

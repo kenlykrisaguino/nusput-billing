@@ -87,7 +87,7 @@
             <tbody>
                 <?php
                 use App\Helpers\FormatHelper;
-                $students = $this->getStudents();
+                $students = $this->studentBE->getStudents();
                 ?>
                 <?php if (count($students) > 0) : ?>
                 <?php foreach($students as $student) :?>

@@ -46,7 +46,8 @@ class StudentBE
         $this->db = $database;
     }
 
-    protected function translateMonthToIndonesia($month) {
+    protected function translateMonthToIndonesia($month)
+    {
         return strtr($month, $this->month_translate);
     }
 
@@ -89,7 +90,7 @@ class StudentBE
             $grade = $_GET['grade-filter'];
             $query .= " AND c.grade_id = $grade";
         }
-        
+
         if (!empty($_GET['section-filter'])) {
             $section = $_GET['section-filter'];
             $query .= " AND c.section_id = $section";
@@ -209,6 +210,7 @@ class StudentBE
         $rawData = file_get_contents('php://input');
 
         $data = json_decode($rawData, true);
+        $status = $this->status;
 
         $userId = $data['user_id'];
         $nis = trim($data['edit-nis'] ?? '');
@@ -307,7 +309,7 @@ class StudentBE
         try {
             $currentClassStmt = $this->db->query('SELECT id, level_id, grade_id, section_id FROM user_class WHERE user_id = ? AND date_left IS NULL LIMIT 1', [$userId]);
             $currentClass = $currentClassStmt ? $this->db->fetchAssoc($currentClassStmt) : null;
-
+            $va = "";
             $userData = [
                 'nis' => $nis,
                 'name' => $name,
@@ -341,7 +343,7 @@ class StudentBE
                 }
 
                 $classList = $this->getClassList();
-                $sectionIdKey = $sectionId ?? 'none';
+                $sectionIdKey = $sectionId ?? '';
                 $lookup = $classList[$levelId][$gradeId][$sectionIdKey] ?? null;
                 if (!$lookup) {
                     throw new Exception('Could not find details for the selected new class.');
@@ -380,7 +382,7 @@ class StudentBE
             }
 
             $additionalFeeChanged = false;
-
+            
             if ($processFees && $periodDate) {
                 $existingFeesStmt = $this->db->query('SELECT id, fee_id, amount FROM user_additional_fee WHERE user_id = ? AND period = ?', [$userId, $periodDate]);
                 if (!$existingFeesStmt) {
@@ -446,16 +448,16 @@ class StudentBE
                 }
 
                 if ($additionalFeeChanged) {
-                    $status = $this->status;
                     $splitDate = Call::splitDate($periodDate);
-                    $billStmt = $this->db->query("SELECT
-                                                    id, trx_detail
-                                                FROM bills
-                                                WHERE
-                                                    user_id = ? AND
-                                                    MONTH(payment_due) = ? AND
-                                                    YEAR(payment_due) = ? AND
-                                                    trx_status IN (?, ?)",
+                    $billStmt = $this->db->query(
+                                "SELECT
+                                    id, trx_detail
+                                FROM bills
+                                WHERE
+                                    user_id = ? AND
+                                    MONTH(payment_due) = ? AND
+                                    YEAR(payment_due) = ? AND
+                                    trx_status IN (?, ?)",
                         [$userId, $splitDate['month'], $splitDate['year'], $status['active'], $status['inactive']],
                     );
                     if (!$billStmt) {
@@ -465,12 +467,12 @@ class StudentBE
                     if (!$billData) {
                         throw new Exception('No matching bill found to update for user ' . $userId . ' period ' . $periodDate);
                     }
-
+    
                     $detail = json_decode($billData['trx_detail'], true);
                     if (json_last_error() !== JSON_ERROR_NONE) {
                         throw new Exception('Failed to decode existing trx_detail JSON for bill ID ' . $billData['id'] . '. Error: ' . json_last_error_msg());
                     }
-
+    
                     $items = [
                         [
                             'amount' => (float) $monthlyFee,
@@ -481,11 +483,11 @@ class StudentBE
                             'item_name' => $detail['items'][1]['item_name'],
                         ],
                     ];
-
+    
                     if (!isset($detail['items']) || !is_array($detail['items']) || !isset($detail['items'][1])) {
                         throw new Exception('Invalid structure in existing trx_detail items for bill ID ' . $billData['id']);
                     }
-
+    
                     $items = [
                         [
                             'amount' => (float) $monthlyFee,
@@ -496,8 +498,9 @@ class StudentBE
                             'item_name' => $detail['items'][1]['item_name'],
                         ],
                     ];
-
-                    $finalAdditionalFeesStmt = $this->db->query("SELECT
+    
+                    $finalAdditionalFeesStmt = $this->db->query(
+                        "SELECT
                                                                     uaf.fee_id, f.name AS fee_name, uaf.amount
                                                                 FROM
                                                                     user_additional_fee uaf LEFT JOIN
@@ -508,7 +511,7 @@ class StudentBE
                     if (!$finalAdditionalFeesStmt) {
                         throw new Exception('Failed to re-query final additional fees.');
                     }
-
+    
                     foreach ($this->db->fetchAll($finalAdditionalFeesStmt) as $f) {
                         $items[] = [
                             'amount' => (float) $f['amount'],
@@ -519,21 +522,92 @@ class StudentBE
                     $detail['total'] = $fee_total;
                     $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
                     $detailsJSON = json_encode($detail, $jsonFlags);
-
+    
                     if ($detailsJSON === false) {
                         throw new Exception('Failed to encode bill items to JSON. Error: ' . json_last_error_msg());
                     }
                     $query = "UPDATE bills SET trx_detail = '$detailsJSON', trx_amount = '$fee_total' WHERE trx_status IN ('$status[active]', '$status[inactive]') AND MONTH(payment_due) = '$splitDate[month]' AND YEAR(payment_due) = '$splitDate[year]' AND user_id = $userId";
-
+    
                     $this->db->query($query);
                 }
             }
+
             if ($classChanged) {
                 $updateBillTotal = $this->db->update('bills', ['trx_amount' => $fee_total], ['user_id' => $userId, 'trx_status' => [$status['active'], $status['inactive']]]);
                 if ($updateBillTotal === false) {
                     throw new Exception('Failed to update bill totals');
                 }
             }
+
+            // Update Bill Details
+            if(!$additionalFeeChanged){
+                $date = Call::Date();
+                $splitDate = Call::splitDate();
+                $detailsQuery = "SELECT 
+                                    id, trx_detail
+                                 FROM bills 
+                                 WHERE
+                                    trx_status IN (?, ?) AND
+                                    payment_due > ? AND
+                                    user_id = ?";
+
+                $detailStmt = $this->db->query($detailsQuery, [$status['active'], $status['inactive'], $date, $userId]);
+                $classList = $this->getClassList();
+                foreach($this->db->fetchAll($detailStmt) as $d){
+                    $decode = json_decode($d['trx_detail'], true);
+
+                    $items = [
+                        [
+                            'amount' => (float) $monthlyFee,
+                            'item_name' => 'monthly_fee',
+                        ],
+                        [
+                            'amount' => (float) $decode['items'][1]['amount'],
+                            'item_name' => $decode['items'][1]['item_name'],
+                        ],
+                    ];
+
+                    $finalAdditionalFeesStmt = $this->db->query(
+                        "SELECT
+                                uaf.fee_id, f.name AS fee_name, uaf.amount
+                            FROM
+                                user_additional_fee uaf LEFT JOIN
+                                fee_categories f ON uaf.fee_id = f.id
+                            WHERE uaf.user_id = ? AND uaf.period = ?",
+                        [$userId, $decode['due_date']],
+                    );
+                    foreach ($this->db->fetchAll($finalAdditionalFeesStmt) as $f) {
+                        $items[0][] = [
+                            'amount' => (float) $f['amount'],
+                            'item_name' => $f['fee_name'],
+                        ];
+                    }
+
+                    $classDetail = $classList[$levelId][$gradeId][$sectionIdInput];
+                    $decode['items'] = $items;
+                    $decode['total'] = $fee_total;
+                    $decode['class'] = "$classDetail[level_name] $classDetail[grade_name] $classDetail[section_name]";
+                    $decode['virtual_account'] = $va != "" ? $va : $decode['virtual_account'];
+                    
+                    $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+                    $detailsJSON = json_encode($decode, $jsonFlags);
+
+                    if ($detailsJSON === false) {
+                        throw new Exception('Failed to encode bill items to JSON. Error: ' . json_last_error_msg());
+                    }
+
+                    $query = "UPDATE bills SET trx_detail = '$detailsJSON' WHERE trx_status IN ('$status[active]', '$status[inactive]') AND MONTH(payment_due) = '$splitDate[month]' AND YEAR(payment_due) = '$splitDate[year]' AND user_id = $userId";
+                    $this->db->query($query);
+                }
+            }
+
+            $logs = [
+                'log_name' => 'UPDATE_STUDENT',
+                'description' => "User #$userId has been updated",
+            ];
+
+            $this->db->insert('logs', $logs);
+
             $this->db->commit();
             return ApiResponse::success('Student data updated successfully.');
         } catch (Exception $e) {
@@ -555,7 +629,7 @@ class StudentBE
                         ' ',
                         COALESCE(g.name, ''),
                         ' ',
-                        COALESCE(S.name, '')
+                        COALESCE(s.name, '')
                     ) AS class_name,
                     (
                         SELECT
@@ -576,10 +650,10 @@ class StudentBE
                     ) AS total_bills
                   FROM
                     users u JOIN
-                    user_class c ON c.user_id = u.id JOIN
-                    levels l ON c.level_id = l.id JOIN
-                    grades g ON c.grade_id = g.id JOIN
-                    sections s ON c.level_id = s.id JOIN
+                    user_class c ON c.user_id = u.id LEFT JOIN
+                    levels l ON c.level_id = l.id LEFT JOIN
+                    grades g ON c.grade_id = g.id LEFT JOIN
+                    sections s ON c.section_id = s.id LEFT JOIN
                     bills b on u.id = b.user_id
                   WHERE
                     b.user_id = '$user_id' AND
@@ -601,23 +675,23 @@ class StudentBE
 
         $params = [
             'id' => $user_id,
-            'academic_year' => $_GET['year-filter'] ??  Call::academicYear(),
-            'semester' => $_GET['semester-filter'] ??  Call::semester() == SECOND_SEMESTER ? 2 : 1
+            'academic_year' => $_GET['year-filter'] ?? Call::academicYear(),
+            'semester' => $_GET['semester-filter'] ?? Call::semester() == SECOND_SEMESTER ? 2 : 1,
         ];
 
         $paramQuery = " AND b.user_id = $params[id]";
 
-        if($params['academic_year'] != NULL_VALUE){
+        if ($params['academic_year'] != NULL_VALUE) {
             $academicYear = explode('/', $params['academic_year'], 2);
             $years = [
                 'min' => "$academicYear[0]-07-01",
-                'max' => "$academicYear[1]-06-30"
+                'max' => "$academicYear[1]-06-30",
             ];
 
             $paramQuery .= " AND b.payment_due BETWEEN '$years[min]' AND '$years[max]' ";
         }
 
-        if($params['semester'] != NULL_VALUE){
+        if ($params['semester'] != NULL_VALUE) {
             $year = explode('/', $params['academic_year'], 2);
 
             if ($params['semester'] == 2) {
@@ -635,10 +709,10 @@ class StudentBE
                     p.details AS `payment_detail`,
                     p.trx_timestamp AS `paid_at`
                   FROM
-                    bills b LEFT JOIN                 
+                    bills b LEFT JOIN
                     payments p ON b.id = p.bill_id LEFT JOIN
                     users u ON u.id = b.user_id LEFT JOIN
-                    user_class c ON u.id = c.user_id LEFT JOIN 
+                    user_class c ON u.id = c.user_id LEFT JOIN
                     levels l ON c.level_id = l.id LEFT JOIN
                     grades g ON c.grade_id = g.id LEFT JOIN
                     sections s ON c.section_id = s.id
@@ -647,7 +721,7 @@ class StudentBE
                   ";
         $result = $this->db->fetchAll($this->db->query($query));
 
-        foreach($result as &$r){
+        foreach ($result as &$r) {
             $r['month'] = $this->translateMonthToIndonesia($r['month']);
         }
 
@@ -682,9 +756,9 @@ class StudentBE
                     COALESCE(s.id, '') AS section_id, c.monthly_fee
                   FROM
                     users u JOIN
-                    user_class c ON u.id = c.user_id JOIN
-                    levels l ON l.id = c.level_id JOIN
-                    grades g ON g.id = c.grade_id JOIN
+                    user_class c ON u.id = c.user_id LEFT JOIN
+                    levels l ON l.id = c.level_id LEFT JOIN
+                    grades g ON g.id = c.grade_id LEFT JOIN
                     sections s ON s.id = c.section_id
                   WHERE
                     c.date_left IS NULL AND
@@ -738,7 +812,7 @@ class StudentBE
                     g.id AS grade_id, g.level_id AS grade_level_id, g.name AS grade_name, g.base_monthly_fee AS grade_monthly, g.base_late_fee AS grade_late,
                     s.id AS section_id, s.grade_id AS section_level_id, s.name AS section_name, s.base_monthly_fee AS section_monthly, s.base_late_fee AS section_late
                   FROM
-                    levels l JOIN
+                    levels l LEFT JOIN
                     grades g ON l.id = g.level_id LEFT JOIN
                     sections s ON g.id = s.grade_id";
         $result = $this->db->fetchAll($this->db->query($query));
@@ -760,38 +834,145 @@ class StudentBE
 
     protected function createStudents($data, $details)
     {
-        $class_list = self::getClassList();
+        try {
+            $this->db->beginTransaction();
+            $class_list = self::getClassList();
 
-        $students = !isset($data[0]) ? [$data] : $data;
-        $classes = !isset($details[0]) ? [$details] : $details;
+            $students = !isset($data[0]) ? [$data] : $data;
+            $classes = !isset($details[0]) ? [$details] : $details;
 
-        $ids = $this->db->insert('users', $students);
+            $ids = $this->db->insert('users', $students);
 
-        $class_details = [];
-        foreach ($ids as $id) {
-            foreach ($classes as $class) {
-                if ($class['nis'] == $id['nis']) {
-                    $l_id = $class['level_id'];
-                    $g_id = $class['grade_id'];
-                    $s_id = $class['section_id'];
+            $class_details = [];
+            foreach ($ids as $id) {
+                foreach ($classes as $class) {
+                    if ($class['nis'] == $id['nis']) {
+                        $l_id = $class['level_id'];
+                        $g_id = $class['grade_id'];
+                        $s_id = $class['section_id'];
 
-                    $va = FormatHelper::formatVA($class_list[$l_id][$g_id][$s_id ?? '']['va_prefix'], $id['nis']);
+                        $va = FormatHelper::formatVA($class_list[$l_id][$g_id][$s_id ?? '']['va_prefix'], $id['nis']);
 
-                    $class_details[] = [
-                        'user_id' => $id['id'],
-                        'level_id' => $l_id,
-                        'grade_id' => $g_id,
-                        'section_id' => $s_id == '' ? null : $s_id,
-                        'monthly_fee' => $class_list[$l_id][$g_id][$s_id ?? '']['monthly_fee'],
-                        'late_fee' => $class_list[$l_id][$g_id][$s_id ?? '']['late_fee'],
-                        'virtual_account' => $va,
-                        'password' => md5($va),
+                        $class_details[] = [
+                            'user_id' => $id['id'],
+                            'level_id' => $l_id,
+                            'grade_id' => $g_id,
+                            'section_id' => $s_id == '' ? null : $s_id,
+                            'monthly_fee' => $class_list[$l_id][$g_id][$s_id ?? '']['monthly_fee'],
+                            'late_fee' => $class_list[$l_id][$g_id][$s_id ?? '']['late_fee'],
+                            'virtual_account' => $va,
+                            'password' => md5($va),
+                        ];
+                    }
+                }
+            }
+
+            $this->db->insert('user_class', $class_details);
+
+            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+            $logName = $this->db->fetchAssoc($this->db->query($log));
+
+            if($logName == null){
+                $this->db->commit();
+                return [
+                    'status' => true
+                ];
+            }
+
+            list($title, $semester, $year, $monthInt) = explode('-', $logName['log_name']);
+
+            $months = Call::monthSemester();
+            $date = Call::splitDate();
+
+            $bills = [];
+            $academicYear = Call::academicYear();
+
+            $strId = implode(",", array_column($ids, 'id'));
+
+            $addedStudentsStmt = "SELECT
+                                u.id, u.name, c.monthly_fee,
+                                c.late_fee, c.virtual_account, c.date_joined,
+                                c.date_left, l.name AS level_name,
+                                CONCAT(
+                                    COALESCE(l.name, ''),
+                                    ' ',
+                                    COALESCE(g.name, ''),
+                                    ' ',
+                                    COALESCE(s.name, '')
+                                ) AS class_name
+                              FROM
+                                users u LEFT JOIN
+                                user_class c ON u.id = c.user_id LEFT JOIN
+                                levels l ON c.level_id = l.id LEFT JOIN
+                                grades g ON c.grade_id = g.id LEFT JOIN
+                                sections s ON c.section_id = s.id
+                              WHERE
+                                u.role = ? AND
+                                c.date_left IS NULL AND
+                                u.id IN ($strId)";
+
+            $role = USER_ROLE_STUDENT;
+            $student_result = $this->db->query($addedStudentsStmt, [$role]);
+            $students = $this->db->fetchAll($student_result);
+
+            foreach ($students as $student) {
+                foreach ($months as $month) {
+                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/{$date['year']} 23:59:59"));
+
+                    if($month < ((int)$monthInt) + 1){
+                        $monthStatus = $this->status['disabled'];
+                    } else if($month == ((int)$monthInt) + 1) {
+                        $monthStatus = $this->status['active'];
+                    } else {
+                        $monthStatus = $this->status['inactive'];
+                    }
+
+                    $details = [
+                        'name' => $student['name'],
+                        'class' => $student['class_name'],
+                        'virtual_account' => $student['virtual_account'],
+                        'academic_year' => $academicYear,
+                        'billing_month' => "$month/{$date['year']}",
+                        'due_date' => $due_date,
+                        'payment_date' => null,
+                        'status' => $monthStatus,
+                        'items' => [
+                            [
+                                'item_name' => MONTHLY_FEE,
+                                'amount' => (int) $student['monthly_fee'],
+                            ],
+                            [
+                                'item_name' => LATE_FEE,
+                                'amount' => 0,
+                            ],
+                        ],
+                        'notes' => '',
+                        'total' => (int) $student['monthly_fee'],
+                    ];
+
+                    $bills[] = [
+                        'user_id' => $student['id'],
+                        'virtual_account' => $student['virtual_account'],
+                        'trx_id' => FormatHelper::FormatTransactionCode($student['level_name'], $student['virtual_account'], $month),
+                        'trx_amount' => (int) $student['monthly_fee'],
+                        'trx_detail' => $details,
+                        'trx_status' => $monthStatus,
+                        'late_fee' => 0,
+                        'payment_due' => $due_date,
                     ];
                 }
             }
-        }
 
-        $ids = $this->db->insert('user_class', $class_details);
+            $bill_result = $this->db->insert('bills', $bills);
+
+            $this->db->commit();
+            return [
+                'status' => true,
+                'details' => $bill_result
+            ];
+        } catch (\Exception $e) {
+            return ['status'=>false, 'errors' => $e];
+        }
     }
 
     public function formCreateStudent()

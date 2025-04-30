@@ -5,6 +5,7 @@ use App;
 use App\Helpers\ApiResponse;
 use App\Database\Database;
 
+use App\Backend\AuthBE;
 use App\Backend\StudentBE;
 use App\Backend\PaymentBE;
 use App\Backend\BillBE;
@@ -18,6 +19,7 @@ class Web
 {
     private $app;
     private Database $db;
+    private $authBE;
     private $studentBE;
     private $paymentBE;
     private $billBE;
@@ -25,12 +27,6 @@ class Web
     private $journalBE;
     private $logBE;
     private $filterBE;
-
-    private $accessRules = [
-        USER_ROLE_SUPERADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
-        USER_ROLE_ADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan'],
-        USER_ROLE_STUDENT => ['dashboard'],
-    ];
 
     private $defaultPages = [
         USER_ROLE_SUPERADMIN => '/students',
@@ -43,6 +39,7 @@ class Web
         $this->app = $app;
         $db = $this->app->getDatabase();
         $this->db = $db;
+        $this->authBE = new AuthBE($db);
         $this->studentBE = new StudentBE($db);
         $this->paymentBE = new PaymentBE($db);
         $this->billBE = new BillBE($db);
@@ -85,6 +82,11 @@ class Web
         $segments = explode('/', trim($path, '/'));
         $page = $segments[0] ?? 'dashboard';
 
+        if ($page === 'invoice') {
+            $this->paymentBE->getPublicInvoice($segments);
+            return;
+        }
+
         if ($page === 'api') {
             $this->handleApiRequest($segments);
             return;
@@ -103,28 +105,13 @@ class Web
             exit();
         }
 
-        $user = $this->getUser();
-        if (!$this->checkAccess($user['role'], $page)) {
+        $user = $this->authBE->getUser();
+        if (!$this->authBE->checkAccess($user['role'], $page)) {
             http_response_code(403);
             $this->render('403');
             exit();
         }
         $this->renderPage($page);
-    }
-
-    protected function checkAccess($role, $page)
-    {
-        if (!$role) {
-            return false;
-        }
-
-        $page = strtolower(trim($page));
-
-        if (isset($this->accessRules[$role]) && in_array($page, $this->accessRules[$role])) {
-            return true;
-        }
-
-        return false;
     }
 
     protected function renderPage($page)
@@ -149,10 +136,10 @@ class Web
 
         switch ($apiEndpoint) {
             case 'login':
-                $this->handleLogin();
+                $this->authBE->handleLogin();
                 break;
             case 'logout':
-                $this->handleLogout();
+                $this->authBE->handleLogout();
                 break;
             case 'create-bills':
                 $this->billBE->createBills();
@@ -211,136 +198,6 @@ class Web
         }
     }
 
-    protected function handleLogin()
-    {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $username = $_POST['username'] ?? '';
-            $password = md5($_POST['password']) ?? '';
-
-            $db = $this->app->getDatabase();
-            $result = $db->query("SELECT u.* FROM user_class c JOIN users u ON u.id = c.user_id WHERE virtual_account = '$username' AND password = '$password'");
-            $user = $db->fetchAll($result);
-            if ($user) {
-                $_SESSION['user_id'] = $user[0]['id'];
-                ApiResponse::success($user[0], 'Login successful');
-            } else {
-                ApiResponse::error('Invalid credentials', 401);
-            }
-        } else {
-            ApiResponse::error('Invalid request method', 405);
-        }
-    }
-
-    protected function handleLogout()
-    {
-        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-            session_destroy();
-            header('Location: /login.php');
-            exit();
-        } else {
-            ApiResponse::error('Invalid request method', 405);
-        }
-    }
-
-    public function isLoggedIn()
-    {
-        return isset($_SESSION['user_id']);
-    }
-
-    public function getUser()
-    {
-        if ($this->isLoggedIn()) {
-            $db = $this->app->getDatabase();
-            $result = $db->query('SELECT * FROM users WHERE id = ' . $_SESSION['user_id']);
-            return $db->fetchAll($result)[0];
-        }
-        return null;
-    }
-
-    public function getRole()
-    {
-        if ($this->isLoggedIn()) {
-            return $this->getUser()['role'];
-        }
-        return null;
-    }
-
-    public function getStudents()
-    {
-        $search = $_GET['search'] ?? '';
-        $filter = $_GET['filter'] ?? [];
-
-        $params = [
-            'search' => $search,
-            'filter' => $filter,
-        ];
-
-        return $this->studentBE->getStudents($params);
-    }
-
-    public function getPayments()
-    {
-        $search = $_GET['search'] ?? '';
-        $filter = $_GET['filter'] ?? [];
-
-        $params = [
-            'search' => $search,
-            'filter' => $filter,
-        ];
-        return $this->paymentBE->getPayments($params);
-    }
-
-    public function getBills()
-    {
-        $search = $_GET['search'] ?? '';
-        $filter = $_GET['filter'] ?? [];
-
-        $params = [
-            'search' => $search,
-            'filter' => $filter,
-        ];
-        return $this->billBE->getBills($params);
-    }
-
-    public function getRecaps()
-    {
-        $search = $_GET['search'] ?? '';
-        $filter = $_GET['filter'] ?? [];
-
-        $params = [
-            'search' => $search,
-            'filter' => $filter,
-        ];
-
-        return $this->recapBE->getRecaps($params);
-    }
-
-    public function getJournals()
-    {
-        $params = [
-            'year' => $_GET['year'] ?? '',
-            'semester' => $_GET['semester'] ?? '',
-            'month' => $_GET['month'] ?? '',
-            'level' => $_GET['level'] ?? '',
-            'grade' => $_GET['grade'] ?? '',
-            'section' => $_GET['section'] ?? '',
-            'va' => $_GET['va'] ?? ''
-        ];
-        return $this->journalBE->getJournals($params);
-    }
-
-    public function getLogs()
-    {
-        $search = $_GET['search'] ?? '';
-        $filter = $_GET['filter'] ?? [];
-
-        $params = [
-            'search' => $search,
-            'filter' => $filter,
-        ];
-        return $this->logBE->getLogs($params);
-    }
-
     public function getFormat()
     {
         $type = $_GET['type'] ?? '';
@@ -359,11 +216,6 @@ class Web
                 exit;
         }
     }
-
-    public function studentPage(){
-        return $this->studentBE->studentPage();
-    }
-
     public function back()
     {
         header('Location: ' . $_SERVER['HTTP_REFERER']);

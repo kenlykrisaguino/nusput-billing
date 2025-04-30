@@ -24,7 +24,7 @@
                 <div class="">
                     <h1 class="text-xl font-bold">Sistem Pembayaran</h1>
                     <?php
-                    $user = $this->getUser();
+                    $user = $this->authBE->getUser();
                     ?>
                     <p class="text-xs"><?= $user['name'] ?></p>
                 </div>
@@ -59,11 +59,14 @@
                         <span
                             class="h-1 w-1 bg-blue-400 rounded-full<?php if ($page != 'penjurnalan') :?> opacity-0 <?php endif;?>"></span>
                     </li>
-                    <li class="flex justify-center items-center flex-col">
-                        <a href="logs" class="text-sm font-medium text-blue-700 hover:text-blue-900">Logs</a>
-                        <span
-                            class="h-1 w-1 bg-blue-400 rounded-full<?php if ($page != 'logs') :?> opacity-0 <?php endif;?>"></span>
-                    </li>
+                    <?php if($user['role'] == USER_ROLE_SUPERADMIN):?>
+                        <li class="flex justify-center items-center flex-col">
+                            <a href="logs" class="text-sm font-medium text-blue-700 hover:text-blue-900">Logs</a>
+                            <span
+                                class="h-1 w-1 bg-blue-400 rounded-full<?php if ($page != 'logs') :?> opacity-0 <?php endif;?>"></span>
+                        </li>
+                    <?php endif?>
+
                     <?php else: ?>
                     <li class="flex justify-center items-center flex-col">
                         <a href="dashboard" class="text-sm font-medium text-blue-700 hover:text-blue-900">Dashboard</a>

@@ -168,11 +168,23 @@ class Database
             if ($value === null) {
                 $whereParts[] = "`$key` IS NULL";
             } else {
-                $whereParts[] = "`$key` = ?";
-                $values[] = $value;
-                if (is_int($value)) $types .= 'i';
-                elseif (is_double($value)) $types .= 'd';
-                else $types .= 's';
+                if(is_array($value)){
+                    $whereOr = [];
+                    foreach($value as $v){
+                        $whereOr[] = "`$key` = ?";
+                        $values[] = $v;
+                        if (is_int($v)) $types .= 'i';
+                        elseif (is_double($v)) $types .= 'd';
+                        else $types .= 's';
+                    }
+                    $whereParts[] = implode(' OR ', $whereOr);
+                } else {
+                    $whereParts[] = "`$key` = ?";
+                    $values[] = $value;
+                    if (is_int($value)) $types .= 'i';
+                    elseif (is_double($value)) $types .= 'd';
+                    else $types .= 's';
+                }
             }
         }
 

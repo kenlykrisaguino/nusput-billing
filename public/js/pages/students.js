@@ -486,7 +486,7 @@ async function editStudent(userId) {
   if (form) {
     form.reset();
     form.newFeeIndex = 1;
-  } // Reset and initialize index
+  }
   const infoTabButton = modal.querySelector('button[onclick*="information"]');
   if (infoTabButton) showEditTab("information", infoTabButton);
   console.log(`Fetching data for User ID: ${userId}`);
@@ -824,7 +824,6 @@ async function submitEditStudent(button) {
   dataToSend["edit-semester"] = tempFormData.get("edit-semester");
   dataToSend["edit-month"] = tempFormData.get("edit-month");
 
-  // Process new fees into the desired array structure
   dataToSend["new_fee"] = [];
   const newFeeRows = form.querySelectorAll(".new-fee-row");
   newFeeRows.forEach((row) => {
@@ -907,6 +906,35 @@ async function submitEditStudent(button) {
   }
 }
 
+
+async function setMonthlyFee(
+  levelSelectFilter,
+  gradeSelectFilter,
+  sectionSelectFilter
+) {
+  input = document.getElementById('edit-monthly-fee');
+  try{
+    const responseData = await getClassesData(levelSelectFilter, gradeSelectFilter, sectionSelectFilter)
+    console.log(levelSelectFilter, gradeSelectFilter, sectionSelectFilter)
+    console.log(responseData)
+    if(levelSelectFilter) {
+      input.value = 0.00
+    }
+    if(gradeSelectFilter) {
+      detail = responseData.grades.find(grade => grade.id == gradeSelectFilter)
+      input.value = detail.base_fee
+    }
+    if(sectionSelectFilter) {
+      detail = responseData.sections.find(section => section.id == sectionSelectFilter)
+      input.value = detail.base_fee
+    }
+
+  } catch (error) {
+    console.error(error)
+  }
+
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Loaded! Initializing script...");
   const createStudentModal = document.getElementById("create-student");
@@ -953,6 +981,11 @@ document.addEventListener("DOMContentLoaded", () => {
           gradeSelectEdit,
           sectionSelectEdit
         );
+        setMonthlyFee(
+          levelSelectEdit.value,
+          gradeSelectEdit.value,
+          sectionSelectEdit.value
+        )
       });
       gradeSelectEdit.addEventListener("change", (event) => {
         const selectedLevelId = levelSelectEdit.value;
@@ -962,7 +995,19 @@ document.addEventListener("DOMContentLoaded", () => {
           gradeSelectEdit,
           sectionSelectEdit
         );
+        setMonthlyFee(
+          levelSelectEdit.value,
+          gradeSelectEdit.value,
+          sectionSelectEdit.value
+        )
       });
+      sectionSelectEdit.addEventListener("change", () => {
+        setMonthlyFee(
+          levelSelectEdit.value,
+          gradeSelectEdit.value,
+          sectionSelectEdit.value
+        )
+      })
     }
   }
 

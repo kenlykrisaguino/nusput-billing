@@ -2,7 +2,7 @@
 
 use App\Helpers\FormatHelper;
 
-$data = $this->studentPage();
+$data = $this->studentBE->studentPage();
 
 $dashboard = $data['dashboard'];
 $payments = $data['payments'];
@@ -38,36 +38,38 @@ $status = [
 <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-y-2 md:grid-cols-3 lg:grid-cols-4">
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">NIS</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['nis'] ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['nis'] ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Nama</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['name'] ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['name'] ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Kontak Orang Tua</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['parent_phone'] ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['parent_phone'] ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Virtual Account</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['virtual_account'] ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['virtual_account'] ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Kelas</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['class_name'] ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['class_name'] ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">SPP</div>
-        <div class="text-lg text-slate-800 font-medium"><?= FormatHelper::formatRupiah($dashboard['monthly_fee']) ?>
+        <div class="text-lg text-slate-800 font-medium">
+            <?= FormatHelper::formatRupiah($dashboard['monthly_fee'] ?? 0 )?>
         </div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Pembayaran Terakhir</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['last_payment'] ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['last_payment'] ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Total Tagihan</div>
-        <div class="text-lg text-slate-800 font-medium"><?= FormatHelper::formatRupiah($dashboard['total_bills']) ?>
+        <div class="text-lg text-slate-800 font-medium">
+            <?= FormatHelper::formatRupiah($dashboard['total_bills'] ?? 0) ?>
         </div>
     </div>
 </div>
@@ -147,6 +149,10 @@ $status = [
                             <span><?= htmlspecialchars($detail['virtual_account']) ?></span>
                         </li>
                         <li class="flex justify-between border-b pb-1 border-slate-600">
+                            <span class="font-semibold">Tahun Ajaran</span>
+                            <span><?= htmlspecialchars($detail['academic_year']) ?></span>
+                        </li>
+                        <li class="flex justify-between border-b pb-1 border-slate-600">
                             <span class="font-semibold">Periode</span>
                             <span><?= htmlspecialchars($detail['billing_month']) ?></span>
                         </li>
@@ -171,8 +177,17 @@ $status = [
 
                         <li class="pt-2 text-slate-700 font-semibold">Rincian Tagihan:</li>
                         <?php foreach ($detail['items'] as $item) : ?>
+                        <?php
+                        $item_name = htmlspecialchars($item['item_name']);
+                        
+                        if ($item_name == 'monthly_fee') {
+                            $item_name = 'Tagihan Bulanan';
+                        } elseif ($item_name == 'late_fee') {
+                            $item_name = 'Biaya Keterlambatan';
+                        }
+                        ?>
                         <li class="flex justify-between pb-1 ps-2">
-                            <span><?= htmlspecialchars($item['item_name']) ?></span>
+                            <span><?= $item_name ?></span>
                             <span><?= FormatHelper::formatRupiah($item['amount']) ?></span>
                         </li>
                         <?php endforeach; ?>

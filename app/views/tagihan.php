@@ -56,7 +56,7 @@
     use App\Helpers\FormatHelper;
     use App\Helpers\Call;
 
-    $data = $this->getBills();
+    $data = $this->billBE->getBills();
     $bills = $data['data'];
     $months = Call::monthNameSemester($data['semester']);
 
@@ -88,7 +88,7 @@
     ]
     ?>
 
-<div class="relative overflow-x-auto shadow-md sm:rounded-lg">
+    <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
         <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
             <thead class="text-xs text-gray-700 uppercase bg-gray-50">
                 <tr>
@@ -99,10 +99,18 @@
                         Kelas
                     </th>
                     <th scope="col" class="px-6 py-3">
-                        Tagihan
+                        <div class="flex flex-col">
+                            <div class="">
+                                Tagihan
+                            </div>
+                            <div class="text-[0.5rem] text-medium text-slate-400">SPP + Denda</div>
+                        </div>
                     </th>
                     <th scope="col" class="px-6 py-3 bg-emerald-50">
-                        Penerimaan
+                        <div class="flex flex-col">
+                            <div class="">Penerimaan</div>
+                            <div class="text-[0.5rem] text-medium text-slate-400">SPP</div>
+                        </div>
                     </th>
                     <th scope="col" class="px-6 py-3 bg-red-50">
                         Tunggakan
@@ -164,6 +172,10 @@
                                                     <span><?= htmlspecialchars($detail['virtual_account']) ?></span>
                                                 </li>
                                                 <li class="flex justify-between border-b pb-1 border-slate-600">
+                                                    <span class="font-semibold">Tahun Ajaran</span>
+                                                    <span><?= htmlspecialchars($detail['academic_year']) ?></span>
+                                                </li>
+                                                <li class="flex justify-between border-b pb-1 border-slate-600">
                                                     <span class="font-semibold">Periode</span>
                                                     <span><?= htmlspecialchars($detail['billing_month']) ?></span>
                                                 </li>
@@ -187,8 +199,17 @@
 
                                                 <li class="pt-2 text-slate-700 font-semibold">Rincian Tagihan:</li>
                                                 <?php foreach ($detail['items'] as $item) : ?>
+                                                    <?php 
+                                                        $item_name = htmlspecialchars($item['item_name']);
+                                                        
+                                                        if($item_name == "monthly_fee"){
+                                                            $item_name = "Tagihan Bulanan";
+                                                        } else if($item_name == "late_fee"){
+                                                            $item_name = "Biaya Keterlambatan";
+                                                        }
+                                                    ?>
                                                     <li class="flex justify-between pb-1 ps-2">
-                                                        <span><?= htmlspecialchars($item['item_name']) ?></span>
+                                                        <span><?= $item_name ?></span>
                                                         <span><?= FormatHelper::formatRupiah($item['amount']) ?></span>
                                                     </li>
                                                 <?php endforeach; ?>

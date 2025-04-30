@@ -4,11 +4,14 @@ namespace app\Backend;
 
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
+use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
 use DateTime;
+use Error;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Exception;
+use LDAP\Result;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -267,9 +270,11 @@ class PaymentBE
 
         $vaString = implode(",", $paymentData['va']);
         $billDetailQuery = "SELECT
-                                id, user_id, virtual_account, trx_detail
+                                b.id, b.user_id, b.virtual_account, 
+                                b.trx_detail, u.parent_phone
                             FROM
-                                bills
+                                bills b INNER JOIN
+                                users u ON u.id = b.user_id
                             WHERE
                                 virtual_account IN ($vaString) AND
                                 trx_status IN (?, ?)";
@@ -278,6 +283,8 @@ class PaymentBE
         $detailData = [];
         $paymentData = [];
         $billId = [];
+        $waMsg = [];
+
         foreach($this->db->fetchAll($billDetailStmt) as $r){
             $va = $r['virtual_account'];
             $billId[] = $r['id'];
@@ -294,9 +301,9 @@ class PaymentBE
             }
             if (!isset($detailData[$va])){
                 $detailData[$va] = [
-                    "name" => $r['name'] ?? "",
+                    "name" => $convertedDetails['name'] ?? "",
                     "virtual_account" => $r['virtual_account'] ?? '',
-                    "class" => $r['class'] ?? "",
+                    "class" => $convertedDetails['class'] ?? "",
                     "items" => $items ?? [],
                     "notes" => $r['notes'] ?? "",
                     "total_payment" => $total,
@@ -307,12 +314,24 @@ class PaymentBE
                 $detailData[$va]['total_payment'] += (float)$total;
             }
 
+            $bill_id = ($paymentData[$va]["bill_id"] ?? 0) > $r['id'] ? $paymentData[$va]["bill_id"] : $r['id'];
+
             $paymentData[$va] = [
-                "bill_id" => ($paymentData[$va]["bill_id"] ?? 0) > $r['id'] ? $paymentData[$va]["bill_id"] : $r['id'],
+                "bill_id" => $bill_id,
                 "user_id" => $r['user_id'],
                 "trx_amount" => $validPaymentData[$va]['trxAmount'],
                 "trx_timestamp" => $validPaymentData[$va]['timestamp'],
                 "details" => json_encode($detailData[$va])
+            ];
+
+            $url = $_SERVER['HTTP_HOST'];
+            $encrypted = $this->generateInvoiceURL($r['user_id'], $bill_id);
+
+            $waMsg[$va] = [
+                'target' => $r['parent_phone'],
+                'message' => "Pembayaran SPP untuk $convertedDetails[name] telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
+                http://$url/invoice/$encrypted",
+                'delay' => 1
             ];
         }
 
@@ -369,7 +388,15 @@ class PaymentBE
             $now = Call::timestamp();
             $b = implode(',', $billId);
 
-            $q = "UPDATE bills b SET b.trx_status = '$status[paid]', b.trx_detail = JSON_SET(b.trx_detail, '$.status', '$status[paid]', '$.payment_date', '$now') WHERE b.id IN ($b)";
+            $q = "UPDATE 
+                    bills b 
+                  SET 
+                    b.trx_status = CASE
+                        WHEN b.trx_status = '$status[unpaid]' THEN '$status[late]'
+                        WHEN b.trx_status = '$status[active]' THEN '$status[paid]'
+                    END,
+                    b.trx_detail = JSON_SET(b.trx_detail, '$.status', b.trx_status, '$.payment_date', '$now')
+                  WHERE b.id IN ($b)";
 
             $updateBillStmt = $this->db->prepare($q);
             if(!$updateBillStmt){
@@ -377,11 +404,87 @@ class PaymentBE
             }
 
             $updateBillStmt->execute();
+            $messages = json_encode($waMsg);
+            $fonnte = Fonnte::sendMessage(['data' => $messages]);
+
+            if(!$fonnte){
+                throw new Exception("Failed to sent WhatsApp Message to Parents");
+            }
 
             $this->db->commit();
-            return ApiResponse::success('', 'Upload Payments successful');
+
+            return ApiResponse::success($waMsg, 'Upload Payments successful');
         } catch (\Exception $e){
             return ApiResponse::error("Failed to save payments to database: " . $e->getMessage());
         }
+    }
+
+    protected function generateInvoiceURL($user, $bill)
+    {
+        $key = $_ENV['ENCRYPTION_KEY'];
+        $method = $_ENV['ENCRYPTION_METHOD'];
+
+        $string = "$user||$bill";
+
+        $ivLength = openssl_cipher_iv_length($method);
+        $iv = openssl_random_pseudo_bytes($ivLength);
+
+        $encrypted = openssl_encrypt($string, $method, $key, 0, $iv);
+        $encrypted_with_iv = base64_encode($iv . $encrypted);
+
+        return $encrypted_with_iv;
+    }
+
+    protected function decryptInvoiceCode($encrypted)
+    {
+        $key = $_ENV['ENCRYPTION_KEY'];
+        $method = $_ENV['ENCRYPTION_METHOD'];
+
+        $data = base64_decode($encrypted);
+
+        $ivLength = openssl_cipher_iv_length($method);
+
+        $iv = substr($data, 0, $ivLength);
+        $cipherText = substr($data, $ivLength);
+
+        $string = openssl_decrypt($cipherText, $method, $key, 0, $iv);
+        
+        if(!$string){
+            return [
+                'status' => false,
+                'error' => "Failed to Decrypt Details"
+            ];
+        }
+
+        list($user, $bill) = explode("||", $string);
+
+        $query = "SELECT
+                    details
+                  FROM
+                    payments
+                  WHERE
+                    bill_id = ? AND user_id = ?";
+        
+        $stmt = $this->db->query($query, [$bill, $user]);
+        $result = $this->db->fetchAssoc($stmt);
+
+        if(!$result){
+            return [
+                'status' => false,
+                'error' => "Payment Not Found"
+            ];
+        }
+
+        return [
+            'status' => true,
+            'details' => $result 
+        ];
+    }
+
+    public function getPublicInvoice($segments)
+    {
+        $cyper = $segments[1];
+        $data = $this->decryptInvoiceCode($cyper);
+        echo ApiResponse::error($data);
     }
 }

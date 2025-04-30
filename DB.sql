@@ -185,8 +185,7 @@ INSERT INTO `sections` (`grade_id`, `name`, `base_monthly_fee`, `base_late_fee`)
 INSERT INTO `users` (`NIS`, `name`, `parent_phone`, `role`) VALUES
 ('0000', 'ADMIN', '08129171920', 'SA'),
 ('0001', 'SUBADMIN', '08129171920', 'TE'),
-('5048', 'Angel Ravelynta', '081329171920', 'ST'),
-('5049', 'Kenly Krisaguino', '081329171921', 'ST');
+('5048', 'Angel Ravelynta', '081329171920', 'ST');
 
 INSERT INTO `user_class` (
   `user_id`, `level_id`, `grade_id`, 
@@ -207,9 +206,4 @@ INSERT INTO `user_class` (
   '3', '4', '15', 
   '18', '665000', '10000',
   '9881105624255048', '9689b341aa161423602a005b0e1b865c', NOW()
-),
-(
-  '4', '3', '12', 
-  '12', '835000', '10000',
-  '9881105524255049', 'b0ca3cfbe7000b5e7161190a9a4c68f4', NOW()
 );

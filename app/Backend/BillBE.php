@@ -142,29 +142,31 @@ class BillBE
                         ' ',
                         COALESCE(g.name, ''),
                         ' ',
-                        COALESCE(S.name, '')
+                        COALESCE(s.name, '')
                     ) AS class_name
                 FROM
                     users u
-                    INNER JOIN user_class c ON u.id = c.user_id
-                    INNER JOIN levels l ON c.level_id = l.id
-                    INNER JOIN grades g ON c.grade_id = g.id
-                    INNER JOIN sections S ON c.section_id = S.id
+                    LEFT JOIN user_class c ON u.id = c.user_id
+                    LEFT JOIN levels l ON c.level_id = l.id
+                    LEFT JOIN grades g ON c.grade_id = g.id
+                    LEFT JOIN sections s ON c.section_id = s.id
                 WHERE u.role = ? AND c.date_left IS NULL
             ";
             $student_result = $this->db->query($students_query, [$role]);
             $students = $this->db->fetchAll($student_result);
 
             $bills = [];
+            $academicYear = Call::academicYear();
 
             foreach ($students as $student) {
                 foreach ($months as $month) {
-                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/{$date['year']}"));
+                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/{$date['year']} 23:59:59"));
 
                     $details = [
                         'name' => $student['name'],
                         'class' => $student['class_name'],
                         'virtual_account' => $student['virtual_account'],
+                        'academic_year' => $academicYear,
                         'billing_month' => "$month/{$date['year']}",
                         'due_date' => $due_date,
                         'payment_date' => null,
@@ -360,7 +362,7 @@ class BillBE
         $modifymonth->modify('+2 days');
         $day_after = $modifymonth->format(DATE_FORMAT);
 
-        $modifymonth->modify('1 days');
+        $modifymonth->modify('-1 days');
         $last_day = $modifymonth->format(DATE_FORMAT);
 
         $day_int = intval($now_formatted->format('d'));
@@ -422,7 +424,10 @@ class BillBE
                     b.payment_due <= '$payment_due' AND
                     c.date_left IS NULL
                   GROUP BY
-                    b.virtual_account, l.name, u.name, u.parent_phone";
+                    b.virtual_account, l.name, u.name, u.parent_phone
+                  HAVING
+                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) + 
+                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) > 0";
 
         $data = $this->db->fetchAll($this->db->query($query));
 
@@ -442,20 +447,24 @@ class BillBE
 
         if($notification_type == DAY_AFTER){
             $query = "SELECT 
-                        u.name, u.parent_phone, p.trx_timestamp, p.details
+                        u.name, u.parent_phone, p.trx_timestamp, p.details,
+                        p.user_id, p.bill_id
                       FROM
                         payments p JOIN
-                        bills b ON b.id = p.bill_id JOIN
+                        bills b ON b.id = p.bill_id LEFT JOIN
                         users u ON u.id = b.user_id
                       WHERE 
-                        b.payment_due IN ('$payment_due')";
-            
-            $data = $this->db->fetchAll($this->db->query($query));
+                        b.payment_due = '$payment_due'";
 
+
+            $data = $this->db->fetchAll($this->db->query($query));
+            $url = $_SERVER['HTTP_HOST'];
+            
             foreach($data as $student){
+                $cyper = $this->generateInvoiceURL($student['user_id'], $student['bill_id']);
                 $name = $student['name'];
                 $timestamp = $student['trx_timestamp'];
-                $user_msg = $message[BILL_STATUS_PAID]."Terima kasih kepada orang tua $name yang telah melakukan pembayaran pada tanggal *$timestamp*.";
+                $user_msg = $message[BILL_STATUS_PAID]."Terima kasih kepada orang tua $name yang telah melakukan pembayaran pada tanggal *$timestamp*. Untuk bukti pembayaran bisa dilihat di http://$url/invoice/$cyper";
                 $msg_data[] = [
                     'target' => $student['parent_phone'],
                     'message' => $user_msg,
@@ -482,6 +491,22 @@ class BillBE
         $query = "SELECT * FROM fee_categories";
 
         return $this->db->fetchAll($this->db->query($query));
+    }
+
+    protected function generateInvoiceURL($user, $bill)
+    {
+        $key = $_ENV['ENCRYPTION_KEY'];
+        $method = $_ENV['ENCRYPTION_METHOD'];
+
+        $string = "$user||$bill";
+
+        $ivLength = openssl_cipher_iv_length($method);
+        $iv = openssl_random_pseudo_bytes($ivLength);
+
+        $encrypted = openssl_encrypt($string, $method, $key, 0, $iv);
+        $encrypted_with_iv = base64_encode($iv . $encrypted);
+
+        return $encrypted_with_iv;
     }
 
     public function getPublicFeeCategories()
@@ -657,7 +682,7 @@ class BillBE
                 }
                 $unpaid_fee[$idx][] = [
                     'periode' => substr($fee_data['payment_due'], 0, 7),
-                    'amount' => $fee_data['late_fee']
+                    'amount' => $fee_data['late_fee'] + $fee_data['trx_amount']
                 ];
             }
 

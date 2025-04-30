@@ -23,12 +23,12 @@ class FilterBE
         $levels = $this->db->fetchAll($this->db->query($query));
 
         if($level!=''){
-            $query = "SELECT id, name FROM grades WHERE level_id=$level";
+            $query = "SELECT id, name, base_monthly_fee AS base_fee FROM grades WHERE level_id=$level";
             $grades = $this->db->fetchAll($this->db->query($query));
         }
         
         if($grade!=''){
-            $query = "SELECT id, name FROM sections WHERE grade_id = $grade";
+            $query = "SELECT id, name, base_monthly_fee AS base_fee FROM sections WHERE grade_id = $grade";
             $sections = $this->db->fetchAll($this->db->query($query));
         }
 
