@@ -77,7 +77,7 @@ class BillBE
                     )";
         }
 
-        if ($params['semester'] == SECOND_SEMESTER){
+        if ($params['semester'] == SECOND_SEMESTER) {
             $min = "$filterYear-01-01";
             $max = "$filterYear-06-30";
         } else {
@@ -340,6 +340,7 @@ class BillBE
             $this->db->insert('logs', $logs);
             $this->db->commit();
             return Response::success(true, 'Bills checked successfully');
+
         } catch (\Exception $e) {
             $this->db->rollback();
             return Response::error('Failed to check bills: ' . $e->getMessage(), 500);
@@ -351,7 +352,20 @@ class BillBE
         $type = $_GET['type'] ?? '';
         $status = $this->status;
 
-        $modifymonth = new DateTime();
+        $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+        $logName = $this->db->fetchAssoc($this->db->query($log));
+
+        if($logName == null){
+            $this->db->commit();
+            return [
+                'status' => true
+            ];
+        }
+        list($title, $semester, $year, $monthInt) = explode('-', $logName['log_name']);
+
+        $month = sprintf('%02d', ((int)$monthInt)+1);
+
+        $modifymonth = new DateTime("1-$month-$year");
         $now_formatted = $modifymonth;
         $now = $modifymonth->format(DATE_FORMAT);
 
@@ -374,7 +388,7 @@ class BillBE
 
         $message = [
             BILL_STATUS_UNPAID => "Pembayaran SPP Bulan $current_month ",
-            BILL_STATUS_PAID   => "Pembayaran SPP Bulan $current_month "
+            BILL_STATUS_PAID => "Pembayaran SPP Bulan $current_month ",
         ];
 
         $msg_valid = false;
@@ -388,8 +402,8 @@ class BillBE
                     $now == $day_after => DAY_AFTER,
                     default => NULL_VALUE,
                 };
-    
-        switch($notification_type){
+
+        switch ($notification_type) {
             case FIRST_DAY:
                 $message[BILL_STATUS_UNPAID] .= "telah dibuka dan akan berakhir di tanggal *$last_day*. ";
                 $msg_valid = true;
@@ -399,8 +413,8 @@ class BillBE
                 $msg_valid = true;
                 break;
             case DAY_AFTER:
-                $message[BILL_STATUS_UNPAID] .= "belum dibayarkan. ";
-                $message[BILL_STATUS_PAID]   .= "telah dibayarkan. ";                
+                $message[BILL_STATUS_UNPAID] .= 'belum dibayarkan. ';
+                $message[BILL_STATUS_PAID] .= 'telah dibayarkan. ';
                 $msg_valid = true;
                 break;
         }
@@ -415,82 +429,83 @@ class BillBE
 
         $query = "SELECT
                     b.virtual_account AS va, l.name AS prefix, u.name AS name, u.parent_phone,
-                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) + 
+                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) +
                     SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) AS total_payment
                   FROM
-                    bills b JOIN 
+                    bills b JOIN
                     users u ON b.user_id = u.id JOIN
                     user_class c ON u.id = c.user_id JOIN
                     levels l ON c.level_id = l.id
-                  WHERE 
+                  WHERE
                     b.payment_due <= '$payment_due' AND
                     c.date_left IS NULL
                   GROUP BY
                     b.virtual_account, l.name, u.name, u.parent_phone
                   HAVING
-                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) + 
+                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) +
                     SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) > 0";
 
         $data = $this->db->fetchAll($this->db->query($query));
 
         $msg_data = [];
 
-        foreach ($data as $student){
+        foreach ($data as $student) {
             $trx_amount = FormatHelper::formatRupiah($student['total_payment']);
             $va = $student['va'];
-            $va_name = $student['prefix'].'_'.$student['name'];
+            $va_name = $student['prefix'] . '_' . $student['name'];
             $user_msg = $message[BILL_STATUS_UNPAID] . "Total Pembayaran: $trx_amount\nVirtual Account: BNI *$va* atas nama *$va_name*";
             $msg_data[] = [
                 'target' => $student['parent_phone'],
                 'message' => $user_msg,
-                'delay' => '1'
+                'delay' => '1',
             ];
         }
 
-        if($notification_type == DAY_AFTER){
-            $query = "SELECT 
+        if ($notification_type == DAY_AFTER) {
+            $query = "SELECT
                         u.name, u.parent_phone, p.trx_timestamp, p.details,
                         p.user_id, p.bill_id
                       FROM
                         payments p JOIN
                         bills b ON b.id = p.bill_id LEFT JOIN
                         users u ON u.id = b.user_id
-                      WHERE 
+                      WHERE
                         b.payment_due = '$payment_due'";
-
 
             $data = $this->db->fetchAll($this->db->query($query));
             $url = $_SERVER['HTTP_HOST'];
-            
-            foreach($data as $student){
+
+            foreach ($data as $student) {
                 $cyper = $this->generateInvoiceURL($student['user_id'], $student['bill_id']);
                 $name = $student['name'];
-                $timestamp = $student['trx_timestamp'];
-                $user_msg = $message[BILL_STATUS_PAID]."Terima kasih kepada orang tua $name yang telah melakukan pembayaran pada tanggal *$timestamp*. Untuk bukti pembayaran bisa dilihat di http://$url/invoice/$cyper";
+                $timestamp = Call::date($student['trx_timestamp']);
+                $user_msg = $message[BILL_STATUS_PAID] . "Terima kasih kepada orang tua $name yang telah melakukan pembayaran pada tanggal *$timestamp*. Untuk bukti pembayaran bisa dilihat di http://$url/invoice/$cyper";
                 $msg_data[] = [
                     'target' => $student['parent_phone'],
                     'message' => $user_msg,
-                    'delay' => '1'
+                    'delay' => '1',
                 ];
             }
-
         }
         if (empty($msg_data)) {
-            return Response::error("Tidak ada pembayaran yang harus dibayar");
+            return Response::error('Tidak ada pembayaran yang harus dibayar');
         }
 
         $messages = json_encode($msg_data);
         $fonnte = Fonnte::sendMessage(['data' => $messages]);
 
-        return Response::success([
-            'fonnte_response' => $fonnte,
-            'messages' => $msg_data
-        ], "Notifikasi pembayaran SPP bulan $current_month berhasil dikirim");
+        return Response::success(
+            [
+                'fonnte_response' => $fonnte,
+                'messages' => $msg_data,
+            ],
+            "Notifikasi pembayaran SPP bulan $current_month berhasil dikirim",
+        );
     }
 
     protected function getFeeCategories()
     {
-        $query = "SELECT * FROM fee_categories";
+        $query = 'SELECT * FROM fee_categories';
 
         return $this->db->fetchAll($this->db->query($query));
     }
@@ -500,7 +515,7 @@ class BillBE
         $key = $_ENV['ENCRYPTION_KEY'];
         $method = $_ENV['ENCRYPTION_METHOD'];
 
-        $string = "$user||$bill";
+        $string = "$user|-|$bill";
 
         $ivLength = openssl_cipher_iv_length($method);
         $iv = openssl_random_pseudo_bytes($ivLength);
@@ -513,12 +528,9 @@ class BillBE
 
     public function getPublicFeeCategories()
     {
-        $query = "SELECT * FROM fee_categories";
+        $query = 'SELECT * FROM fee_categories';
 
-        return ApiResponse::success(
-            $this->db->fetchAll($this->db->query($query)),
-            'Success get Additional Fee Categories'
-        );
+        return ApiResponse::success($this->db->fetchAll($this->db->query($query)), 'Success get Additional Fee Categories');
     }
 
     protected function getBillFormat(int $late = 0)
@@ -527,23 +539,19 @@ class BillBE
 
         $sheet = $spreadsheet->getActiveSheet();
 
-        $headers = [
-            'No', 'VA', 'NIS', 
-            'Nama', 'Jenjang', 'Tingkat', 
-            'Kelas', 'SPP'
-        ];
+        $headers = ['No', 'VA', 'NIS', 'Nama', 'Jenjang', 'Tingkat', 'Kelas', 'SPP'];
 
         $fee_categories = $this->getFeeCategories();
 
-        foreach($fee_categories as $fee){
+        foreach ($fee_categories as $fee) {
             $headers[] = $fee['name'];
         }
 
         $headers[] = 'Periode Sekarang';
         $headers[] = 'Jumlah Tunggakan (bulan)';
-        for($i = 0; $i <= $late ; $i++){
-            $headers[] = $i+1;
-            $headers[] = 'Besar Tagihan '.$i+1;
+        for ($i = 0; $i <= $late; $i++) {
+            $headers[] = $i + 1;
+            $headers[] = 'Besar Tagihan ' . $i + 1;
         }
         $headers[] = 'Total Piutang';
         $headers[] = 'HER (DPP/UP)';
@@ -561,7 +569,7 @@ class BillBE
             'font' => [
                 'bold' => true,
             ],
-            'alignment' => [ 
+            'alignment' => [
                 'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
             ],
         ];
@@ -581,10 +589,10 @@ class BillBE
         $fee_category_subquery_list = [];
         $fee_category_aliases_list = [];
 
-        if($fee_categories){
-            foreach($fee_categories as $category){
-                $categoryId = (int)$category['id']; 
-                $alias = "Category" . $categoryId;
+        if ($fee_categories) {
+            foreach ($fee_categories as $category) {
+                $categoryId = (int) $category['id'];
+                $alias = 'Category' . $categoryId;
 
                 $fee_category_select_list[] = "COALESCE(uaf_agg.`$alias`, 0) AS $alias";
                 $fee_category_subquery_list[] = "SUM(CASE WHEN uaf_sub.fee_id = $categoryId THEN uaf_sub.amount ELSE 0 END) AS $alias";
@@ -592,10 +600,10 @@ class BillBE
             }
         }
 
-        $fee_category_select_query = !empty($fee_category_select_list) ? ", " . implode(", ", $fee_category_select_list) : "";
-        $fee_category_subquery_query = !empty($fee_category_subquery_list) ? ", " . implode(", ", $fee_category_subquery_list) : "";
-        $fee_category_group_by_query = !empty($fee_category_aliases_list) ? ", " . implode(", ", $fee_category_aliases_list) : "";
-        
+        $fee_category_select_query = !empty($fee_category_select_list) ? ', ' . implode(', ', $fee_category_select_list) : '';
+        $fee_category_subquery_query = !empty($fee_category_subquery_list) ? ', ' . implode(', ', $fee_category_subquery_list) : '';
+        $fee_category_group_by_query = !empty($fee_category_aliases_list) ? ', ' . implode(', ', $fee_category_aliases_list) : '';
+
         $query = "SELECT
                     c.virtual_account AS va,
                     u.nis AS nis,
@@ -607,7 +615,7 @@ class BillBE
                     MAX(CONCAT(YEAR(b.payment_due), '/', LPAD(MONTH(b.payment_due), 2, '0'))) AS payment_due,
                     COUNT(CASE WHEN b.trx_status = '$status[unpaid]' THEN 1 ELSE NULL END) AS late_count,
                     SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS late_fee,
-                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]', '$status[active]') THEN b.trx_amount ELSE 0 END) AS payable,
+                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]', '$status[active]') THEN b.trx_amount ELSE 0 END) + SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS payable,
                     ub.unpaid_bill_details
                     $fee_category_select_query
                 FROM
@@ -669,44 +677,40 @@ class BillBE
         $max_late = 0;
         $data = [];
 
-        foreach($result as $index => $row){
+        foreach ($result as $index => $row) {
             $max_late = $max_late = max($max_late, $row['late_count']);
-            $fee_json = isset($row['unpaid_bill_details']) ? json_decode($row['unpaid_bill_details'] ?? "[]", true) : [];
+            $fee_json = isset($row['unpaid_bill_details']) ? json_decode($row['unpaid_bill_details'] ?? '[]', true) : [];
             $additional_fee = [];
             $unpaid_fee = [];
-            foreach($fee_json as $idx => $fee_data){
+            foreach ($fee_json as $idx => $fee_data) {
                 $details = $fee_data['trx_detail']['items'];
-                foreach($details as $detail){
-                    if($detail['item_name'] == "monthly_fee" || $detail['item_name'] == "late_fee" ){
+                foreach ($details as $detail) {
+                    if ($detail['item_name'] == 'monthly_fee' || $detail['item_name'] == 'late_fee') {
                         break;
                     }
                     $additional_fee[$detail['item_name']] = $additional_fee['amount'];
                 }
                 $unpaid_fee[$idx][] = [
                     'periode' => substr($fee_data['payment_due'], 0, 7),
-                    'amount' => $fee_data['late_fee'] + $fee_data['trx_amount']
+                    'amount' => $fee_data['late_fee'] + $fee_data['trx_amount'],
                 ];
             }
 
-            $data[$index] = [
-                $index+1, $row['va'], $row['nis'], 
-                $row['nama'], $row['level'], $row['grade'],
-                $row['section'], FormatHelper::formatRupiah($row['monthly_fee'])
-            ];
+            $data[$index] = [$index + 1, $row['va'], $row['nis'], $row['nama'], $row['level'], $row['grade'], $row['section'], FormatHelper::formatRupiah($row['monthly_fee'])];
 
-            foreach($fee_categories as $category){
+            foreach ($fee_categories as $category) {
                 $data[$index][] = FormatHelper::formatRupiah(isset($additional_fee[$category['name']]) ? $additional_fee[$category['name']] : 0);
             }
 
             $data[$index][] = $row['payment_due'];
             $data[$index][] = $row['late_count'] + 1;
-            
-            foreach($unpaid_fee as $i => $uf){
+
+            foreach ($unpaid_fee as $i => $uf) {
                 $data[$index][] = $uf[0]['periode'];
                 $data[$index][] = FormatHelper::formatRupiah($uf[0]['amount']);
             }
             $data[$index][] = FormatHelper::formatRupiah($row['payable']);
-            $data[$index][] = "-";
+            $data[$index][] = '-';
             $data[$index][] = FormatHelper::formatRupiah($row['payable']);
         }
 
@@ -715,8 +719,8 @@ class BillBE
         $sheet = $spreadsheet->getActiveSheet();
         $writer = new Xlsx($spreadsheet);
 
-        foreach($data as $index => $d){
-            $sheet->fromArray($d, null, 'A'.($startRow+$index));
+        foreach ($data as $index => $d) {
+            $sheet->fromArray($d, null, 'A' . ($startRow + $index));
         }
         $highestColumn = $sheet->getHighestColumn();
         foreach (range('A', $highestColumn) as $col) {
@@ -726,12 +730,12 @@ class BillBE
         if (ob_get_length()) {
             ob_end_clean();
         }
-    
+
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="export_bills.xlsx"');
         header('Cache-Control: max-age=0');
-    
-        $writer->save('php://output');        
-        exit;
+
+        $writer->save('php://output');
+        exit();
     }
 }

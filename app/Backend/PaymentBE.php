@@ -270,6 +270,7 @@ class PaymentBE
             }
         }
 
+        
         $vaString = implode(",", $paymentData['va']);
         $billDetailQuery = "SELECT
                                 b.id, b.user_id, b.virtual_account, 
@@ -332,14 +333,19 @@ class PaymentBE
             $waMsg[$va] = [
                 'target' => $r['parent_phone'],
                 'message' => "Pembayaran SPP untuk $convertedDetails[name] telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
-                http://$url/invoice/$encrypted",
-                'delay' => 1
+http://$url/invoice/$encrypted",
+                'delay' => '1'
             ];
         }
 
         $paymentFinal = [];
         foreach($paymentData as $data){
             $paymentFinal[] = $data;
+        }
+
+        $queueMsg = [];
+        foreach($waMsg as $msg){
+            $queueMsg[] = $msg;
         }
 
         if(!empty($errorRowsData)){
@@ -406,17 +412,13 @@ class PaymentBE
             }
 
             $updateBillStmt->execute();
-            $messages = json_encode($waMsg);
+            $messages = json_encode($queueMsg);
             $fonnte = Fonnte::sendMessage(['data' => $messages]);
-
-            if(!$fonnte){
-                throw new Exception("Failed to sent WhatsApp Message to Parents");
-            }
 
             $this->db->commit();
 
-            return ApiResponse::success($waMsg, 'Upload Payments successful');
-        } catch (\Exception $e){
+            return ApiResponse::success($fonnte, 'Upload Payments successful');
+        } catch (Exception $e){
             return ApiResponse::error("Failed to save payments to database: " . $e->getMessage());
         }
     }

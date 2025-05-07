@@ -6,6 +6,10 @@
 use App\Helpers\FormatHelper;
 $journals = $this->journalBE->getJournals();
 
+$per_first_day   = $journals['per_first_day'];
+$per_tenth_day   = $journals['per_tenth_day'];
+$late_fee_result = $journals['late_fee_amount'];
+$paid_late_fee   = $journals['paid_late_fee'];
 ?>
 
 <form method="get" class="grid md:grid-cols-3 gap-4">
@@ -54,7 +58,7 @@ $journals = $this->journalBE->getJournals();
     </div>
     <div class="md:col-span-3">
         <label for="search" class="block text-sm text-gray-700">Search</label>
-        <input type="text" id="search" name="search"
+        <input type="text" id="search" name="search" value="<?= $_GET['search'] ?? null?>"
             class="block w-full px-3 py-2 text-sm text-slate-800 bg-white rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
     </div>
     <div class="md:col-span-3">
@@ -63,28 +67,117 @@ $journals = $this->journalBE->getJournals();
     </div>
 </form>
 
-<div class="mt-8 relative flex flex-col gap-2 justify-center sm:rounded-lg">
-    <table class="text-sm text-left w-full md:w-100">
-        <tbody class="border-b border-slate-400">
-            <tr class="border-b w-[100%] border-slate-500">
-                <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
-                    Bank
-                </th>
-                <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                    <?= FormatHelper::formatRupiah($journals['bank'])?>
-                </th>
-            </tr>
-            <tr class="border-b w-[100%] border-slate-500">
-                <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                    Pendapatan
-                </th>
-                <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                    <?= FormatHelper::formatRupiah($journals['bank'] - $journals['denda'])?>
-                </th>
-            </tr>
-        </tbody>
-    </table>
-    <p class="font-medium text-xs">Total Denda: <span class="font-bold hover:text-red-500 transition-colors"><?=FormatHelper::formatRupiah($journals['denda']) ?></span></p>
+<div class="grid md:grid-cols-2 gap-4">
+    <div class="mt-8 relative flex flex-col gap-2 justify-center sm:rounded-lg">
+        <table class="text-sm text-left w-full md:w-100">
+            <thead class="border-b border-slate-400">
+                <tr>
+                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Transaksi per Tanggal 1</th>
+                </tr>
+            </thead>
+            <tbody class="border-b border-slate-400">
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
+                        Piutang
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($per_first_day['bank'])?>
+                    </th>
+                </tr>
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        Pendapatan
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($per_first_day['bank'] - $per_first_day['denda'])?>
+                    </th>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="mt-8 relative flex flex-col gap-2 justify-center sm:rounded-lg">
+        <table class="text-sm text-left w-full md:w-100">
+            <thead class="border-b border-slate-400">
+                <tr>
+                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Transaksi per Tanggal 10</th>
+                </tr>
+            </thead>
+            <tbody class="border-b border-slate-400">
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
+                        Kas
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($per_tenth_day['bank'])?>
+                    </th>
+                </tr>
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        Piutang
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($per_tenth_day['bank'] - $per_first_day['denda'])?>
+                    </th>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="mt-8 relative flex flex-col gap-2 justify-center sm:rounded-lg">
+        <table class="text-sm text-left w-full md:w-100">
+            <thead class="border-b border-slate-400">
+                <tr>
+                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Penerbitan Denda</th>
+                </tr>
+            </thead>
+            <tbody class="border-b border-slate-400">
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
+                        Piutang Denda
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($late_fee_result['late_fee'])?>
+                    </th>
+                </tr>
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        Penerimaan Denda
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($late_fee_result['late_fee'])?>
+                    </th>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="mt-8 relative flex flex-col gap-2 justify-center sm:rounded-lg">
+        <table class="text-sm text-left w-full md:w-100">
+        <thead class="border-b border-slate-400">
+                <tr>
+                    <th colspan="2" class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Pembayaran Denda Lunas</th>
+                </tr>
+            </thead>
+            <tbody class="border-b border-slate-400">
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
+                        Kas
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($paid_late_fee['late_fee'])?>
+                    </th>
+                </tr>
+                <tr class="border-b w-[100%] border-slate-200">
+                    <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        Piutang Denda
+                    </th>
+                    <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
+                        <?= FormatHelper::formatRupiah($late_fee_result['late_fee'])?>
+                    </th>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
 </div>
+
 
 <script src="/js/pages/penjurnalan.js"></script>

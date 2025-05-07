@@ -114,7 +114,7 @@ class Call
         }
     }
 
-    public static function getFirstDay($details, $type = FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS)
+    public static function getFirstDay($details = null, $type = FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS)
     {
         switch($type){
             case FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS:
@@ -124,16 +124,24 @@ class Call
         }
     }
 
-    private static function firstDayFromAcademicYear($details)
+    private static function firstDayFromAcademicYear($details = [])
     {
+        if(empty($details)){
+            $now = Call::splitDate();
+            $details = [
+                'year' => Call::academicYear(),
+                'semester' => Call::semester() == FIRST_SEMESTER ? 1 : 2,
+                'month' => $now['month']
+            ];
+        }
         $academic_year = $details['year'];
         $semester = $details['semester'];
-        $month = $details['month'];
+        $month = sprintf('%02d', $details['month']);
 
         $years = explode("/", $academic_year);
         $year = $years[intval($semester) - 1];
 
-        $firstDay = "$year/$month/01";
+        $firstDay = "$year-$month-01";
 
         return $firstDay;
     }
