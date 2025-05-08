@@ -9,6 +9,7 @@ use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
 use DateTime;
+use Exception;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -61,8 +62,10 @@ class BillBE
         foreach ($months as $num => $month) {
             $monthQuery[] = "
                 SUM(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_amount + b.late_fee ELSE 0 END) AS `$month`,
+                SUM(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.late_fee ELSE 0 END) AS `Late$month`,
                 MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_status ELSE '' END) AS `Status$month`,
-                MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_detail ELSE '' END) AS `Detail$month`
+                MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_detail ELSE '' END) AS `Detail$month`,
+                MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.id ELSE 0 END) AS `BillId$month`
             ";
         }
 
@@ -737,5 +740,71 @@ class BillBE
 
         $writer->save('php://output');
         exit();
+    }
+
+    public function updateLateFee()
+    {
+        $billId = $_POST['bill_id'];
+        $lateFee = $_POST['late_fee'];
+
+        try{
+            $this->db->beginTransaction();
+
+            $getBill = "SELECT * FROM bills WHERE id = ?";
+            $bill = $this->db->fetchAssoc($this->db->query($getBill, [$billId]));
+
+            $billDetail = json_decode($bill['trx_detail'], true);
+            $oldLateFee = FormatHelper::formatRupiah($bill['late_fee']);
+            $newLateFee = FormatHelper::formatRupiah($lateFee);
+
+            $billDetail['total']  = 0;
+            foreach($billDetail['items'] as $id => $item){
+                if($item['item_name'] == LATE_FEE){
+                    $billDetail['items'][$id]['amount'] = (float)$lateFee;
+                    $item['amount'] = (float)$lateFee;
+                }
+                $billDetail['total'] += $item['amount'];
+            }
+            
+            $billDetailJSON = json_encode($billDetail);
+            $bill['trx_detail'] = $billDetailJSON;
+            $bill['late_fee'] = (float)$lateFee;
+            
+            $updateBill = $this->db->update('bills', $bill, ['id' => $billId]);
+            if(!$updateBill){
+                throw new Exception('Failed to update bills');
+            }
+
+            $userDetailQuery = "SELECT 
+                                    u.name, u.parent_phone, MONTH(b.payment_due) AS month, YEAR(b.payment_due) AS year
+                                FROM 
+                                    bills b JOIN 
+                                    users u ON b.user_id = u.id
+                                WHERE
+                                    b.id = ?";
+        
+            $userDetail = $this->db->fetchAssoc($this->db->query($userDetailQuery, [$billId]));
+            $name = $userDetail['name'];
+            $contact = $userDetail['parent_phone'];
+            $month = FormatHelper::formatMonthNameInBahasa($userDetail['month']);
+            $year = $userDetail['year'];
+            
+            $msg = [
+                [
+                    'target' => $contact,
+                    'message' => "Biaya keterlambatan SPP *$name* pada bulan *$month $year* telah diubah dari *$oldLateFee* menjadi *$newLateFee*",
+                    'delay' => '1'
+                ]
+            ];
+
+            Fonnte::sendMessage(['data' => json_encode($msg)]);
+
+            $this->db->commit();
+            $_SESSION['msg'] = "Biaya keterlambatan berhasil diperbarui.";
+        } catch(\Exception $e){
+            $_SESSION['msg'] = "Terjadi kesalahan saat mengubah biaya keterlambatan: ".$e->getMessage();
+        } finally {
+            header("Location: /tagihan");
+        }
     }
 }

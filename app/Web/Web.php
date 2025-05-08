@@ -115,6 +115,14 @@ class Web
             $this->render('403');
             exit();
         }
+        
+        if($page == 'tagihan'){
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $this->billBE->updateLateFee();
+                exit();
+            }
+        }
+        
         $this->renderPage($page);
     }
 
