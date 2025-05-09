@@ -3,6 +3,7 @@
 namespace app\Backend;
 
 use App\Helpers\ApiResponse as Response;
+use Exception;
 
 class AuthBE
 {
@@ -11,7 +12,7 @@ class AuthBE
     private $accessRules = [
         USER_ROLE_SUPERADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
         USER_ROLE_ADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan'],
-        USER_ROLE_STUDENT => ['dashboard'],
+        USER_ROLE_STUDENT => ['dashboard', 'update-password'],
     ];
 
     public function __construct($database)
@@ -84,5 +85,61 @@ class AuthBE
             return $this->getUser()['role'];
         }
         return null;
+    }
+
+    public function changePassword()
+    {
+        $oldPassword = $_POST['password-lama'] ?? null;
+        $newPassword = $_POST['password-baru'] ?? null;
+        $confirmation = $_POST['konfirmasi-password-baru'] ?? null;
+
+        try{
+            if(empty($oldPassword) || empty($newPassword) || empty($confirmation)){
+                throw new Exception("Masukan seluruh input untuk mengubah password"); 
+            }
+
+            if($newPassword !== $confirmation){
+                throw new Exception("Password yang baru tidak sama"); 
+            }
+
+            $user = $this->getUser();
+            $passwordQuery = "SELECT c.password FROM user_class c WHERE c.user_id = ? AND date_left IS NULL";
+            $password = $this->db->fetchAssoc($this->db->query($passwordQuery, [$user['id']]))['password'];
+            
+            $CryptedOldPass = md5($oldPassword);
+            if($CryptedOldPass != $password){
+                throw new Exception("Password Lama tidak sesuai"); 
+            }
+
+            $update = $this->db->update('user_class', ['password' => md5($newPassword)], ['user_id' => $user['id'], 'date_left' => null]);
+            if(!$update){
+                throw new Exception("Error mengupdate password");
+            }
+
+            $_SESSION['msg'] = "Password berhasil diperbarui.";
+        } catch (\Exception $e){
+            $_SESSION['msg'] = "Terjadi kesalahan saat mengubah password: ".$e->getMessage();
+        } finally {
+            header("Location: /dashboard");
+        }
+        
+    }
+
+    protected function generatePasswordOTP()
+    {
+
+    }
+
+    public function sendOTP()
+    {
+        
+    }
+    public function verifyOTP()
+    {
+
+    }
+    public function updatePassword()
+    {
+
     }
 }

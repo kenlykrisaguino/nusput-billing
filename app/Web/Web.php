@@ -109,6 +109,14 @@ class Web
             exit();
         }
 
+        
+        if($page == 'update-password'){
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $this->authBE->changePassword();
+                exit();
+            }
+        }
+
         $user = $this->authBE->getUser();
         if (!$this->authBE->checkAccess($user['role'], $page)) {
             http_response_code(403);
@@ -188,6 +196,15 @@ class Web
                 break;
             case 'export-invoice':
                 $this->paymentBE->exportPublicInvoice($segments);
+                break;
+            case 'send-otp':
+                $this->authBE->sendOTP($segments);
+                break;
+            case 'verify-otp':
+                $this->authBE->verifyOTP($segments);
+                break;
+            case 'update-password':
+                $this->authBE->updatePassword($segments);
                 break;
 
             default:

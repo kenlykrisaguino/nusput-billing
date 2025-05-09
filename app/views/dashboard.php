@@ -33,7 +33,14 @@ $status = [
         'class' => 'text-slate-200',
     ],
 ];
-?>
+
+if (isset($_SESSION['msg'])) :?>
+<script>
+    alert("<?= $_SESSION['msg'] ?>")
+</script>
+<?php 
+unset($_SESSION['msg']);
+endif;?>
 
 <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-y-2 md:grid-cols-3 lg:grid-cols-4">
     <div>
@@ -59,7 +66,7 @@ $status = [
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">SPP</div>
         <div class="text-lg text-slate-800 font-medium">
-            <?= FormatHelper::formatRupiah($dashboard['monthly_fee'] ?? 0 )?>
+            <?= FormatHelper::formatRupiah($dashboard['monthly_fee'] ?? 0) ?>
         </div>
     </div>
     <div>
@@ -135,15 +142,15 @@ $status = [
                     <div class="flex justify-between items-center mb-2 ">
                         <h3 class="text-sm font-bold text-slate-700">Detail Tagihan <?= $payment['month'] ?></h3>
                         <?php if($payment['paid_at'] != ""):?>
-                            <?php 
-                            $url = $_SERVER['HTTP_HOST'];
-                            $code = $this->paymentBE->generateInvoiceURL($payment['user_id'], $payment['bill_id']);    
-                            $full = "http://$url/invoice/$code";
-                            ?>
-                            <a href="<?= $full?>" target="_blank"
-                                class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                                <i class="fa-regular fa-file-lines"></i> Buka Invoice
-                            </a>
+                        <?php
+                        $url = $_SERVER['HTTP_HOST'];
+                        $code = $this->paymentBE->generateInvoiceURL($payment['user_id'], $payment['bill_id']);
+                        $full = "http://$url/invoice/$code";
+                        ?>
+                        <a href="<?= $full ?>" target="_blank"
+                            class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <i class="fa-regular fa-file-lines"></i> Buka Invoice
+                        </a>
                         <?php endif?>
                     </div>
 
@@ -230,6 +237,45 @@ $status = [
             <?php endif;?>
         </tbody>
     </table>
+</div>
+
+<div class="flex w-full justify-center mt-8">
+    <button onclick="document.getElementById('modal-ganti-password').classList.remove('hidden')"
+        class="cursor-pointer px-4 py-1 text-sm border-2 border-blue-500 text-blue-500 rounded hover:bg-blue-500 hover:text-white transition-colors">Ganti
+        Password</button>
+</div>
+
+<div id="modal-ganti-password" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
+    <div class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
+        <div class="flex justify-between items-center mb-2 ">
+            <h3 class="text-sm font-bold text-slate-700">Ganti Password</h3>
+        </div>
+        <form action="update-password" method="POST">
+            <div class="mt-4">
+                <label for="password-lama" class="block text-sm text-gray-700">Password Lama</label>
+                <input type="password" id="password-lama" name="password-lama"
+                    class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
+            </div>
+            <div class="mt-4">
+                <label for="password-baru" class="block text-sm text-gray-700">Password Baru</label>
+                <input type="password" id="password-baru" name="password-baru"
+                    class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
+            </div>
+            <div class="my-4">
+                <label for="konfirmasi-password-baru" class="block text-sm text-gray-700">Konfirmasi Password Baru</label>
+                <input type="password" id="konfirmasi-password-baru" name="konfirmasi-password-baru"
+                    class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
+            </div>
+            <button type="submit"
+                class="mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Ubah
+            </button>
+            <button onclick="document.getElementById('modal-ganti-password').classList.add('hidden')" type="button"
+                class="mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Tutup
+            </button>
+        </form>
+    </div>
 </div>
 
 <script src="/js/pages/dashboard.js"></script>
