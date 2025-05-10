@@ -12,6 +12,8 @@ CREATE TABLE `users` (
   `email` varchar(255) DEFAULT NULL,
   `parent_phone` varchar(20) NOT NULL,
   `role` char(2) NOT NULL, -- SA, AD, ST
+  `otp_code` char(6) DEFAULT NULL,
+  `otp_created` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` TIMESTAMP DEFAULT NULL

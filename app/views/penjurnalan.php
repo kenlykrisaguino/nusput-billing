@@ -72,13 +72,13 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
         <table class="text-sm text-left w-full md:w-100">
             <thead class="border-b border-slate-400">
                 <tr>
-                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Transaksi per Tanggal 1</th>
+                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Penerbitan Uang Sekolah</th>
                 </tr>
             </thead>
             <tbody class="border-b border-slate-400">
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
-                        Piutang
+                        PIUT UANG SEKOLAH
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($per_first_day)?>
@@ -86,7 +86,7 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
                 </tr>
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                        Penerimaan
+                        PENERIMAAN - UANG SEKOLAH
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($per_first_day)?>
@@ -99,13 +99,13 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
         <table class="text-sm text-left w-full md:w-100">
             <thead class="border-b border-slate-400">
                 <tr>
-                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Transaksi per Tanggal 10</th>
+                    <th colspan="2"  class="uppercase text-center px-6 py-4 bg-white text-slate-700 whitespace-nowrap">Pelunasan Uang Sekolah</th>
                 </tr>
             </thead>
             <tbody class="border-b border-slate-400">
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
-                        Kas
+                        BANK BNI
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($per_tenth_day)?>
@@ -113,7 +113,7 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
                 </tr>
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                        Piutang
+                        PIUT. UANG SEKOLAH
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($per_tenth_day)?>
@@ -132,7 +132,7 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
             <tbody class="border-b border-slate-400">
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
-                        Piutang Denda
+                        PIUT. DENDA
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($late_fee_result)?>
@@ -140,7 +140,7 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
                 </tr>
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                        Penerimaan Denda
+                        PENERIMAAN - UANG DENDA
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($late_fee_result)?>
@@ -159,7 +159,7 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
             <tbody class="border-b border-slate-400">
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="px-6 py-4 bg-white text-slate-700 whitespace-nowrap">
-                        Kas
+                        BANK BNI
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($paid_late_fee)?>
@@ -167,7 +167,7 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
                 </tr>
                 <tr class="border-b w-[100%] border-slate-200">
                     <th scope="row" class="text-right px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
-                        Piutang Denda
+                        PIUT. DENDA
                     </th>
                     <th scope="row" class="px-6 py-4 font-medium bg-white text-slate-700 whitespace-nowrap font-semibold">
                         <?= FormatHelper::formatRupiah($paid_late_fee)?>

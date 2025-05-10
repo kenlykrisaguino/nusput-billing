@@ -3,6 +3,9 @@
 namespace app\Backend;
 
 use App\Helpers\ApiResponse as Response;
+use App\Helpers\ApiResponse;
+use App\Helpers\Call;
+use App\Helpers\Fonnte;
 use Exception;
 
 class AuthBE
@@ -94,6 +97,7 @@ class AuthBE
         $confirmation = $_POST['konfirmasi-password-baru'] ?? null;
 
         try{
+            $this->db->beginTransaction();
             if(empty($oldPassword) || empty($newPassword) || empty($confirmation)){
                 throw new Exception("Masukan seluruh input untuk mengubah password"); 
             }
@@ -115,7 +119,7 @@ class AuthBE
             if(!$update){
                 throw new Exception("Error mengupdate password");
             }
-
+            $this->db->commit();
             $_SESSION['msg'] = "Password berhasil diperbarui.";
         } catch (\Exception $e){
             $_SESSION['msg'] = "Terjadi kesalahan saat mengubah password: ".$e->getMessage();
@@ -125,21 +129,107 @@ class AuthBE
         
     }
 
-    protected function generatePasswordOTP()
+    protected function generatePasswordOTP(String $va): bool|array
     {
+        $userQuery = "SELECT u.* FROM user_class c JOIN users u ON c.user_id = u.id WHERE c.virtual_account = ? AND c.date_left IS NULL";
+        $user = $this->db->fetchAssoc($this->db->query($userQuery, [$va]));
 
+        if(count($user) < 0){
+            return false;
+        }
+        $six_digit_random_number = random_int(0, 999999);
+
+        $token = sprintf('%06d', $six_digit_random_number);
+
+        $now = Call::timestamp();
+
+        $updateQuery = $this->db->update('users', ['otp_code' => $token, 'otp_created' => $now], ['id' => $user['id']]);
+// 
+        if(!$updateQuery){
+            return false;
+        }
+        return [
+            $token,
+            $user['parent_phone']
+        ];
     }
 
     public function sendOTP()
     {
-        
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Invalid API endpoint', 404);
+        }
+
+        $rawData = file_get_contents('php://input');
+        $data = json_decode($rawData, true);
+
+        $result = $this->generatePasswordOTP($data['virtual_account']);
+
+        if(!$result){
+            return ApiResponse::error("Failed to generate OTP", 401);
+        }
+
+        list($token, $phone) = $result;
+
+        $msg[] = [
+            'target' => $phone,
+            'message' => "Kode OTP untuk Reset Password Sistem Keuangan Nusaputera adalah sebagai berikut:\n*$token*\nKode OTP ini hanya berlaku selama 15 menit. Jangan bagikan kode ini kepada siapapun.",
+            'delay' => '1'
+        ];
+
+        Fonnte::sendMessage(['data' => json_encode($msg)]);
+
+        return ApiResponse::success($token, 'Berhasil mengirimkan OTP');
     }
     public function verifyOTP()
     {
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Invalid API endpoint', 404);
+        }
 
+        $rawData = file_get_contents('php://input');
+        $data = json_decode($rawData, true);
+
+        $userQuery = "SELECT u.otp_code, u.id FROM user_class c JOIN users u ON c.user_id = u.id WHERE c.virtual_account = ? AND c.date_left IS NULL";
+        $user = $this->db->fetchAssoc($this->db->query($userQuery, [$data['virtual_account']]));
+
+        if( empty($user) || $data['otp'] != $user['otp_code']){
+            return ApiResponse::error('Invalid OTP Token', 401);
+        }
+
+        return ApiResponse::success(null, 'OTP Telah Terverifikasi');
     }
     public function updatePassword()
     {
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Invalid API endpoint', 404);
+        }
 
+        $rawData = file_get_contents('php://input');
+        $data = json_decode($rawData, true);
+        try{
+            $this->db->beginTransaction();
+
+            $userQuery = "SELECT u.otp_code, u.id FROM user_class c JOIN users u ON c.user_id = u.id WHERE c.virtual_account = ? AND c.date_left IS NULL";
+            $user = $this->db->fetchAssoc($this->db->query($userQuery, [$data['virtual_account']]));
+    
+            if( empty($user) || $data['otp'] != $user['otp_code']){
+                throw new Exception('Invalid OTP Token');
+            }
+    
+            $updateUser = $this->db->update('users', ['otp_code' => null, 'otp_created' => null], ['id' => $user['id']]);
+            
+            if(!$updateUser){
+                throw new Exception('Failed to remove token from database');
+            }
+            $password = md5($data['password']);
+            $this->db->update('user_class', ['password' => md5($password)], ['virtual_account' => $data['virtual_account']]);
+    
+            $this->db->commit();
+            return ApiResponse::success(null, 'Password telah diupdate!');
+        
+        } catch (\Exception $e) {
+            return ApiResponse::error('Failed to update Password: '.$e->getMessage(), 500);
+        }
     }
 }
