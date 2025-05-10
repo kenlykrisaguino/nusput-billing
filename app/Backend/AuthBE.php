@@ -223,7 +223,7 @@ class AuthBE
                 throw new Exception('Failed to remove token from database');
             }
             $password = md5($data['password']);
-            $this->db->update('user_class', ['password' => md5($password)], ['virtual_account' => $data['virtual_account']]);
+            $this->db->update('user_class', ['password' => $password], ['virtual_account' => $data['virtual_account']]);
     
             $this->db->commit();
             return ApiResponse::success(null, 'Password telah diupdate!');
