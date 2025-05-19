@@ -191,6 +191,9 @@ class Web
             case 'upload-students-bulk':
                 $this->studentBE->importStudentsFromXLSX();
                 break;
+            case 'update-students-bulk':
+                $this->studentBE->bulkUpdateStudentsFromXLSX();
+                break;
             case 'get-student-detail':
                 $this->studentBE->getStudentDetail();
                 break;

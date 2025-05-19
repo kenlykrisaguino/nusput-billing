@@ -25,16 +25,16 @@ class Call
             'day' => (int)$day,
         ];
     }
-    public static function year($format = YEAR_FOUR_DIGIT_FORMAT)
+    public static function year($format = YEAR_FOUR_DIGIT_FORMAT, $date = null)
     {
-        $date = self::splitDate();
+        $splitDate = self::splitDate($date);
         switch ($format) {
             case YEAR_FOUR_DIGIT_FORMAT:
-                return $date['year'];
+                return $splitDate['year'];
             case YEAR_TWO_DIGIT_FORMAT:
-                return $date['year']%100;
+                return $splitDate['year']%100;
             default:
-                return $date['year'];
+                return $splitDate['year'];
         }
     }
     public static function semester($date = null)

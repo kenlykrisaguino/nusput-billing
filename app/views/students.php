@@ -5,6 +5,9 @@
             <div onclick="document.getElementById('create-student').classList.remove('hidden')"
                 class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
                 Tambah Siswa</div>
+            <div onclick="document.getElementById('update-students').classList.remove('hidden')"
+                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
+                Update Siswa</div>
             <a href="/exports/students"
                 class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
                 Export</a>
@@ -216,6 +219,31 @@
             </button>
 
             <button onclick="closeModal('create-student')" type="button"
+                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
+                Batal
+            </button>
+        </form>
+    </div>
+
+    <div id="update-students" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
+        <form method="post" id="update-student-form"
+            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
+            <h3 class="text-sm font-bold mb-2 text-slate-700">Update Siswa</h3>
+
+            <div class="border-b border-slate-600 pb-2 mb-4">
+                <label for="bulk-update-students" class="mb-1 block text-xs font-medium text-slate-700">Upload file</label>
+                <input name="bulk-update-students" id="bulk-update-students" type="file" accept=".xlsx"
+                    class="mt-2 block w-full text-xs file:mr-4 file:rounded-md file:border-0 file:bg-blue-500 file:py-1 file:px-2 file:text-xs file:font-medium file:text-white hover:file:bg-blue-700 focus:outline-none disabled:pointer-events-none disabled:opacity-60" />
+                <small class="text-slate-400 text-xs italic">Data siswa saat ini dapat diunduh di <a
+                        class="text-blue-400 hover:text-blue-500" href="/exports/students">disini</a></small>
+            </div>
+
+            <button type="submit"
+                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Update
+            </button>
+
+            <button onclick="closeModal('update-students')" type="button"
                 class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
                 Batal
             </button>

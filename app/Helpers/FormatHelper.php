@@ -10,11 +10,12 @@ class FormatHelper
         return 'Rp ' . number_format((float)$amount, 0, ',', '.');
     }
 
-    public static function formatVA($level, $nis)
+    public static function formatVA($level, $nis, $date = null)
     {
-        $currentYear = date('Y')%100;
-        $isFirstHalf = (date('m') >= 7);
-        $academic_year = $isFirstHalf ? "$currentYear" . $currentYear+1 : $currentYear-1 . "$currentYear";
+        $current_date = Call::date($date) ?? Call::date();
+        $current_year = Call::year(YEAR_TWO_DIGIT_FORMAT, $current_date);
+        $semester     = Call::semester($current_date);
+        $academic_year = $semester == SECOND_SEMESTER ? "$current_year" . $current_year+1 : $current_year-1 . "$current_year";
         return $_ENV['BANK_CODE'] . $level . $academic_year . $nis;
     }
 

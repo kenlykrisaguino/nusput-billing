@@ -795,6 +795,111 @@ async function submitStudent(event) {
   }
 }
 
+async function submitUpdateStudents(event) {
+  event.preventDefault();
+  const form = event.target;
+  const fileInput =
+    form.querySelector("#bulk-update-students") ||
+    document.getElementById("bulk-update-students");
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalButtonText = "Update";
+  submitButton.disabled = true;
+  submitButton.textContent = "Processing...";
+  submitButton.classList.remove("cursor-pointer");
+  submitButton.classList.add("cursor-progress");
+  let url;
+  let requestBody;
+  let headers = {};
+
+  url = "/api/update-students-bulk";
+  requestBody = new FormData();
+  requestBody.append("bulk-update-students", fileInput.files[0]);
+
+  try {
+    console.log(`Sending request to ${url}`);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: headers,
+      body: requestBody,
+    });
+    console.info("Response Status:", response.status);
+    console.info("Response OK:", response.ok);
+    let result;
+    try {
+      const responseText = await response.text();
+      console.log("Raw Response Body:", responseText);
+      if (responseText) {
+        result = JSON.parse(responseText);
+        console.log("Parsed JSON Response:", result);
+      } else {
+        result = {
+          success: response.ok,
+          message: response.ok ? "Success (No Content)" : "Error (No Content)",
+        };
+        console.log("Empty response body, assuming success based on status.");
+      }
+    } catch (e) {
+      console.error("Failed to parse JSON response:", e);
+      if (!response.ok) {
+        throw new Error(
+          response.statusText || `Server error ${response.status}`
+        );
+      } else {
+        alert("Received an unexpected response format from the server.");
+        result = { message: "Unexpected response format." };
+      }
+    }
+    if (!result.success && !response.ok) {
+      console.error("Server Error:", response.status, result);
+      const errorMessage =
+        result?.message ||
+        (Array.isArray(result?.errors)
+          ? result.errors.join(", ")
+          : `Error ${response.status}`);
+      alert(errorMessage);
+    } else {
+      if (
+        response.headers.get("Content-Type")?.includes("spreadsheetml.sheet")
+      ) {
+        alert(
+          "Update failed. Please check the downloaded error report file for details."
+        );
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = "update_student_errors.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        if (typeof closeModal === "function") {
+          closeModal("update-students");
+        }
+      } else {
+        alert(
+          result.message ||
+            (isBulkUpload
+              ? "File berhasil diproses!"
+              : "Data siswa berhasil ditambahkan!")
+        );
+        if (typeof closeModal === "function") {
+          closeModal("update-students");
+        }
+        location.reload();
+      }
+    }
+  } catch (error) {
+    console.error("Fetch or Processing Error:", error);
+    alert(`Terjadi kesalahan: ${error.message}`);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = originalButtonText;
+    submitButton.classList.add("cursor-pointer");
+    submitButton.classList.remove("cursor-progress");
+  }
+}
+
 async function submitEditStudent(button) {
   const form = button.closest("form");
   if (!form) {
@@ -906,39 +1011,45 @@ async function submitEditStudent(button) {
   }
 }
 
-
 async function setMonthlyFee(
   levelSelectFilter,
   gradeSelectFilter,
   sectionSelectFilter
 ) {
-  input = document.getElementById('edit-monthly-fee');
-  try{
-    const responseData = await getClassesData(levelSelectFilter, gradeSelectFilter, sectionSelectFilter)
-    console.log(levelSelectFilter, gradeSelectFilter, sectionSelectFilter)
-    console.log(responseData)
-    if(levelSelectFilter) {
-      input.value = 0.00
+  input = document.getElementById("edit-monthly-fee");
+  try {
+    const responseData = await getClassesData(
+      levelSelectFilter,
+      gradeSelectFilter,
+      sectionSelectFilter
+    );
+    console.log(levelSelectFilter, gradeSelectFilter, sectionSelectFilter);
+    console.log(responseData);
+    if (levelSelectFilter) {
+      input.value = 0.0;
     }
-    if(gradeSelectFilter) {
-      detail = responseData.grades.find(grade => grade.id == gradeSelectFilter)
-      input.value = detail.base_fee
+    if (gradeSelectFilter) {
+      detail = responseData.grades.find(
+        (grade) => grade.id == gradeSelectFilter
+      );
+      input.value = detail.base_fee;
     }
-    if(sectionSelectFilter) {
-      detail = responseData.sections.find(section => section.id == sectionSelectFilter)
-      input.value = detail.base_fee
+    if (sectionSelectFilter) {
+      detail = responseData.sections.find(
+        (section) => section.id == sectionSelectFilter
+      );
+      input.value = detail.base_fee;
     }
-
   } catch (error) {
-    console.error(error)
+    console.error(error);
   }
-
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Loaded! Initializing script...");
   const createStudentModal = document.getElementById("create-student");
   const editStudentModal = document.getElementById("edit-student");
+  const bulkEditStudentForm = document.getElementById("update-student-form");
   const filterStudentModal = document.getElementById("filter-student");
   if (createStudentModal) {
     const levelSelectCreate = createStudentModal.querySelector("#level");
@@ -985,7 +1096,7 @@ document.addEventListener("DOMContentLoaded", () => {
           levelSelectEdit.value,
           gradeSelectEdit.value,
           sectionSelectEdit.value
-        )
+        );
       });
       gradeSelectEdit.addEventListener("change", (event) => {
         const selectedLevelId = levelSelectEdit.value;
@@ -999,15 +1110,15 @@ document.addEventListener("DOMContentLoaded", () => {
           levelSelectEdit.value,
           gradeSelectEdit.value,
           sectionSelectEdit.value
-        )
+        );
       });
       sectionSelectEdit.addEventListener("change", () => {
         setMonthlyFee(
           levelSelectEdit.value,
           gradeSelectEdit.value,
           sectionSelectEdit.value
-        )
-      })
+        );
+      });
     }
   }
 
@@ -1036,5 +1147,9 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       });
     }
+  }
+
+  if (bulkEditStudentForm) {
+    bulkEditStudentForm.addEventListener("submit", submitUpdateStudents);
   }
 });
