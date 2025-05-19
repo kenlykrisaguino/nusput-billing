@@ -62,6 +62,8 @@ class Call
             case ACADEMIC_YEAR_FOUR_FORMAT:
                 $startYear = $startYear%100;
                 return "$startYear$endYear";
+            case ACADEMIC_YEAR_AKT_FORMAT:
+                return "$startYear - $endYear";
             default:
                 return "$startYear/$endYear";
         }

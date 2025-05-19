@@ -4,6 +4,7 @@ namespace app\Backend;
 
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
+use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
 use DateTime;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -325,6 +326,7 @@ class StudentBE
                 throw new Exception('Failed to update user information.');
             }
 
+            $feeChanged = false;
             $classChanged = true;
             $fee_total = $monthlyFee;
             if ($currentClass) {
@@ -334,6 +336,7 @@ class StudentBE
             }
 
             if ($classChanged) {
+                $feeChanged = true;
                 $now = (new DateTime())->format('Y-m-d H:i:s');
                 if ($currentClass) {
                     $endClassResult = $this->db->update('user_class', ['date_left' => $now], ['id' => $currentClass['id']]);
@@ -398,6 +401,7 @@ class StudentBE
                     $feeId = (int) $feeId;
                     $newAmount = (float) $newAmount;
                     $processedFeeIds[] = $feeId;
+                    $feeChanged = true;
                     if (isset($currentFeesMap[$feeId])) {
                         if ($currentFeesMap[$feeId]['amount'] != $newAmount) {
                             $fee_total += $newAmount;
@@ -425,6 +429,7 @@ class StudentBE
                     if (isset($catId['amount']) && is_numeric($catId['amount']) && $catId['amount'] >= 0) {
                         $amount = (float) $catId['amount'];
                         if (!isset($currentFeesMap[$category]) || !in_array($category, $processedFeeIds)) {
+                            $feeChanged = true;
                             $additionalFeeChanged = true;
                             $processedFeeIds[] = $category;
                             $fee_total += (int) $amount;
@@ -439,6 +444,7 @@ class StudentBE
 
                 foreach ($currentFeesMap as $feeId => $feeDetails) {
                     if (!in_array($feeId, $processedFeeIds)) {
+                        $feeChanged = true;
                         $additionalFeeChanged = true;
                         $deleteResult = $this->db->delete('user_additional_fee', ['id' => $feeDetails['id']]);
                         if ($deleteResult === false) {
@@ -599,6 +605,15 @@ class StudentBE
                     $query = "UPDATE bills SET trx_detail = '$detailsJSON' WHERE trx_status IN ('$status[active]', '$status[inactive]') AND MONTH(payment_due) = '$splitDate[month]' AND YEAR(payment_due) = '$splitDate[year]' AND user_id = $userId";
                     $this->db->query($query);
                 }
+            }
+
+            if($feeChanged){
+                $message['data'] = [
+                    'target'  => $parentPhone,
+                    'message' => "Biaya Uang Sekolah *$name* telah terubah, dimohon untuk dapat mengecek Sistem Keuangan Nusaputera",
+                    'delay'   => "1"
+                ];
+                Fonnte::sendMessage($message);
             }
 
             $logs = [

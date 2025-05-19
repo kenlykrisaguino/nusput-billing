@@ -3,6 +3,7 @@
 namespace app\Backend;
 
 require_once dirname(dirname(__DIR__)) . '/config/constants.php';
+use App\Backend\JournalBE;
 use App\Helpers\ApiResponse as Response;
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
@@ -16,6 +17,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class BillBE
 {
     private $db;
+    private $journal;
     private $status = [
         'paid' => BILL_STATUS_PAID,
         'unpaid' => BILL_STATUS_UNPAID,
@@ -28,6 +30,7 @@ class BillBE
     public function __construct($database)
     {
         $this->db = $database;
+        $this->journal = new JournalBE($database);
     }
 
     public function getBills()
@@ -208,6 +211,7 @@ class BillBE
             $this->db->insert('logs', $logs);
 
             $this->db->commit();
+            $this->sendToAKTSystem($months[0], $date['year']);
             return Response::success($bill_result, 'Bills created successfully');
         } catch (\Exception $e) {
             $this->db->rollback();
@@ -341,13 +345,93 @@ class BillBE
             $this->db->query('DROP TEMPORARY TABLE IF EXISTS temp_bills');
 
             $this->db->insert('logs', $logs);
-            $this->db->commit();
-            return Response::success(true, 'Bills checked successfully');
 
+            $this->db->commit();
+
+            $this->sendToAKTSystem($date['month']+1, $date['year']);
+
+            return Response::success(true, 'Bills checked successfully');
         } catch (\Exception $e) {
             $this->db->rollback();
             return Response::error('Failed to check bills: ' . $e->getMessage(), 500);
         }
+    }
+
+    protected function sendToAKTSystem($month, $year)
+    {
+        // ! Kirim ke Sistem AKT
+        $levels = $this->db->fetchAll($this->db->query('SELECT * FROM levels'));
+        $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+        $url = "$base_url/page/transaksi/backend/create.php";
+        // TODO: Store the data that are being sent
+        $journalData = [];
+
+        $academic_year = Call::academicYear(ACADEMIC_YEAR_AKT_FORMAT);
+
+        $smk1 = ['SMK TKJ', 'SMK MM'];
+
+        $import_akt_data = [
+            'tahun_ajaran' => $academic_year,
+            'sumber_dana' => 'Rutin',
+        ];
+
+        foreach ($levels as $level) {
+            $journals = $this->journal->getJournals($level['id']);
+            if (in_array($level['name'], $smk1)) {
+                if (!isset($journalData['SMK1'])) {
+                    $journalData['SMK1'] = [
+                        'PTUS' => 0.0,
+                        'PLUS' => 0.0,
+                        'PNBD' => 0.0,
+                        'PBDL' => 0.0,
+                    ];
+                }
+                $journalData['SMK1']['PTUS'] += $journals['per_first_day'];
+                $journalData['SMK1']['PLUS'] += $journals['per_tenth_day'];
+                $journalData['SMK1']['PNBD'] += $journals['late_fee_amount'];
+                $journalData['SMK1']['PBDL'] += $journals['late_fee_amount'];
+            } else {
+                $journalData[$level['name']] = [
+                    'PTUS' => $journals['per_first_day'] ?? 0.0,
+                    'PLUS' => $journals['per_tenth_day'] ?? 0.0,
+                    'PNBD' => $journals['late_fee_amount'] ?? 0.0,
+                    'PBDL' => $journals['paid_late_fee'] ?? 0.0,
+                ];
+            }
+        }
+
+        $bulan = FormatHelper::formatMonthNameInBahasa($month);
+        $postValue = [];
+        foreach ($journalData as $level => $journalLevel) {
+            foreach ($journalLevel as $code => $amount) {
+                if ($amount != 0) {
+                    $postValue[] = [
+                        'kode_transaksi' => $code,
+                        'tahun_ajaran' => $import_akt_data['tahun_ajaran'],
+                        'sumber_dana' => $import_akt_data['sumber_dana'],
+                        'nama_jenjang' => $level,
+                        'saldo' => $amount,
+                        'bulan' => $bulan,
+                    ];
+                }
+            }
+        }
+
+        $json_data = json_encode($postValue);
+        $headers = ['Content-Type: application/json'];
+
+        // TODO: Setup cURL
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json_data);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+        
+        echo $response;
+        exit();
     }
 
     public function notifyBills()
@@ -358,15 +442,15 @@ class BillBE
         $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
         $logName = $this->db->fetchAssoc($this->db->query($log));
 
-        if($logName == null){
+        if ($logName == null) {
             $this->db->commit();
             return [
-                'status' => true
+                'status' => true,
             ];
         }
-        list($title, $semester, $year, $monthInt) = explode('-', $logName['log_name']);
+        [$title, $semester, $year, $monthInt] = explode('-', $logName['log_name']);
 
-        $month = sprintf('%02d', ((int)$monthInt)+1);
+        $month = sprintf('%02d', ((int) $monthInt) + 1);
 
         $modifymonth = new DateTime("1-$month-$year");
         $now_formatted = $modifymonth;
@@ -747,64 +831,64 @@ class BillBE
         $billId = $_POST['bill_id'];
         $lateFee = $_POST['late_fee'];
 
-        try{
+        try {
             $this->db->beginTransaction();
 
-            $getBill = "SELECT * FROM bills WHERE id = ?";
+            $getBill = 'SELECT * FROM bills WHERE id = ?';
             $bill = $this->db->fetchAssoc($this->db->query($getBill, [$billId]));
 
             $billDetail = json_decode($bill['trx_detail'], true);
             $oldLateFee = FormatHelper::formatRupiah($bill['late_fee']);
             $newLateFee = FormatHelper::formatRupiah($lateFee);
 
-            $billDetail['total']  = 0;
-            foreach($billDetail['items'] as $id => $item){
-                if($item['item_name'] == LATE_FEE){
-                    $billDetail['items'][$id]['amount'] = (float)$lateFee;
-                    $item['amount'] = (float)$lateFee;
+            $billDetail['total'] = 0;
+            foreach ($billDetail['items'] as $id => $item) {
+                if ($item['item_name'] == LATE_FEE) {
+                    $billDetail['items'][$id]['amount'] = (float) $lateFee;
+                    $item['amount'] = (float) $lateFee;
                 }
                 $billDetail['total'] += $item['amount'];
             }
-            
+
             $billDetailJSON = json_encode($billDetail);
             $bill['trx_detail'] = $billDetailJSON;
-            $bill['late_fee'] = (float)$lateFee;
-            
+            $bill['late_fee'] = (float) $lateFee;
+
             $updateBill = $this->db->update('bills', $bill, ['id' => $billId]);
-            if(!$updateBill){
+            if (!$updateBill) {
                 throw new Exception('Failed to update bills');
             }
 
-            $userDetailQuery = "SELECT 
+            $userDetailQuery = "SELECT
                                     u.name, u.parent_phone, MONTH(b.payment_due) AS month, YEAR(b.payment_due) AS year
-                                FROM 
-                                    bills b JOIN 
+                                FROM
+                                    bills b JOIN
                                     users u ON b.user_id = u.id
                                 WHERE
                                     b.id = ?";
-        
+
             $userDetail = $this->db->fetchAssoc($this->db->query($userDetailQuery, [$billId]));
             $name = $userDetail['name'];
             $contact = $userDetail['parent_phone'];
             $month = FormatHelper::formatMonthNameInBahasa($userDetail['month']);
             $year = $userDetail['year'];
-            
+
             $msg = [
                 [
                     'target' => $contact,
                     'message' => "Biaya keterlambatan SPP *$name* pada bulan *$month $year* telah diubah dari *$oldLateFee* menjadi *$newLateFee*",
-                    'delay' => '1'
-                ]
+                    'delay' => '1',
+                ],
             ];
 
             Fonnte::sendMessage(['data' => json_encode($msg)]);
 
             $this->db->commit();
-            $_SESSION['msg'] = "Biaya keterlambatan berhasil diperbarui.";
-        } catch(\Exception $e){
-            $_SESSION['msg'] = "Terjadi kesalahan saat mengubah biaya keterlambatan: ".$e->getMessage();
+            $_SESSION['msg'] = 'Biaya keterlambatan berhasil diperbarui.';
+        } catch (\Exception $e) {
+            $_SESSION['msg'] = 'Terjadi kesalahan saat mengubah biaya keterlambatan: ' . $e->getMessage();
         } finally {
-            header("Location: /tagihan");
+            header('Location: /tagihan');
         }
     }
 }

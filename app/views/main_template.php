@@ -30,6 +30,7 @@
                 </div>
             </div>
             <div id="nav">
+                <?php if(isset($user['role'])) : ?>
                 <ul class="flex gap-6">
                     <?php if($user['role'] != USER_ROLE_STUDENT):?>
                     <li class="flex justify-center items-center flex-col">
@@ -79,6 +80,7 @@
                         <span class="h-1 w-1 bg-blue-400 rounded-full opacity-0"></span>
                     </li>
                 </ul>
+                <?php endif; ?>
             </div>
             <div class="w-screen px-6">
                 <hr class="h-0.25 text-sky-200" />
