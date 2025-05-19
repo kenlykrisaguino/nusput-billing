@@ -22,8 +22,8 @@ class FormatHelper
     {   
         switch ($type) {
             case LOG_CREATE_BILLS:
-                $year           = Call::year();
-                $semester       = Call::semester();
+                $year           = $attr['year'] ?? Call::year();
+                $semester       = $attr['semester'] ?? Call::semester();
 
                 $name = LOG_CREATE_BILLS."-$semester-$year";
                 $desc = "System Created Billing for the $year $semester.";

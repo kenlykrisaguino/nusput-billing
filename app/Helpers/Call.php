@@ -43,10 +43,10 @@ class Call
         $isFirstHalf = ($date['month'] >= 7);
         return $isFirstHalf ? FIRST_SEMESTER : SECOND_SEMESTER;
     }
-    public static function academicYear($format = ACADEMIC_YEAR_EIGHT_SLASH_FORMAT)
+    public static function academicYear($format = ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, $attr = [])
     {
-        $semester = self::semester();
-        $date = self::splitDate();
+        $semester = $attr['semester'] ?? self::semester();
+        $date = $attr['date'] ?? self::splitDate();
 
         $startYear = $semester == FIRST_SEMESTER ? $date['year'] : $date['year']-1;
         $endYear = $startYear + 1;

@@ -167,6 +167,12 @@ class Web
             case 'check-bills':
                 $this->billBE->checkBills();
                 break;
+            case 'manual-create-bills':
+                $this->billBE->manualCreateBills();
+                break;
+            case 'manual-check-bills':
+                $this->billBE->manualCheckBills();
+                break;
             case 'filter-classes':
                 $this->filterBE->getClassDetails();
                 break;

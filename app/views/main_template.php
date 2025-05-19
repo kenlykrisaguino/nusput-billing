@@ -116,6 +116,14 @@
                 <i class="fas fa-bell-slash mr-2"></i>
                 <span class="text-xs">Notify Close Bill</span>
             </button>
+            <button id="manualCreateBills" class="bg-red-100 cursor-pointer text-red-800 px-6 py-2 rounded-full shadow-lg hover:bg-red-200 flex items-center">
+                <i class="fas fa-file-invoice mr-2"></i>
+                <span class="text-xs">Force Create Bills</span>
+            </button>
+            <button id="manualCheckBills" class="bg-red-100 cursor-pointer text-red-800 px-6 py-2 rounded-full shadow-lg hover:bg-red-200 flex items-center">
+                <i class="fas fa-check mr-2"></i>
+                <span class="text-xs">Force Check Bills</span>
+            </button>
         </div>
     </div>
 
@@ -141,7 +149,7 @@
                     showToast('Check Bills Success', 'success');
                 })
                 .catch(error => {
-                    showToast('Check Bills Failed', 'error');
+                    showToast('Check Bills Failed: ' + error.response.data.message, 'error');
                 });
         });
 
@@ -151,7 +159,7 @@
                     showToast('Create Bills Success', 'success');
                 })
                 .catch(error => {
-                    showToast('Create Bills Failed', 'error');
+                    showToast('Create Bills Failed: ' + error.response.data.message, 'error');
                 });
         });
 
@@ -161,7 +169,7 @@
                     showToast('Notify Open Bill Success', 'success');
                 })
                 .catch(error => {
-                    showToast('Notify Open Bill Failed', 'error');
+                    showToast('Notify Open Bill Failed: ' + error.response.data.message, 'error');
                 });
         });
 
@@ -171,7 +179,27 @@
                     showToast('Notify Close Bill Success', 'success');
                 })
                 .catch(error => {
-                    showToast('Notify Close Bill Failed', 'error');
+                    showToast('Notify Close Bill Failed: ' + error.response.data.message, 'error');
+                });
+        });
+
+        document.getElementById('manualCheckBills').addEventListener('click', function() {
+            axios.get('/api/manual-check-bills')
+                .then(response => {
+                    showToast('Force Check Bills Success', 'success');
+                })
+                .catch(error => {
+                    showToast('Force Check Bills Failed: ' + error.response.data.message, 'error');
+                });
+        });
+
+        document.getElementById('manualCreateBills').addEventListener('click', function() {
+            axios.get('/api/manual-create-bills')
+                .then(response => {
+                    showToast('Force Create Bills Success', 'success');
+                })
+                .catch(error => {
+                    showToast('Force Create Bills Failed: ' + error.response.data.message, 'error');
                 });
         });
     </script>
