@@ -14,6 +14,8 @@ use App\Backend\RecapBE;
 use App\Backend\JournalBE;
 use App\Backend\LogBE;
 use App\Backend\FilterFE;
+use App\Helpers\Call;
+use App\Helpers\FormatHelper;
 
 class Web
 {
@@ -95,6 +97,32 @@ class Web
             $this->handleApiRequest($segments);
             return;
         }
+
+        if($page === 'test'){
+                $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+                $logName = $this->db->fetchAssoc($this->db->query($log));
+                if(!empty($logName)){
+                    [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
+                    $date = "$year-$month-01";
+                    
+                    if(in_array($month, [6, 12])){
+                        $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
+                        $logName = $this->db->fetchAssoc($this->db->query($log));
+                        
+                        [$title, $semester2, $year] = explode('-', $logName['log_name']);
+                        if($semester1 != $semester2){
+                            $date = "$year-".((int)$month+1)."-01";
+                        }
+                    }
+                } else {
+                    $date = Call::date();
+                }
+
+                $va = FormatHelper::formatVA(">", "<", $date);
+                ApiResponse::error($va);
+            return;
+        }
+
         if ($page === 'exports') {
             $this->handleExportRequest($segments);
             return;

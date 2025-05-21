@@ -15,7 +15,7 @@ class FormatHelper
         $current_date = Call::date($date) ?? Call::date();
         $current_year = Call::year(YEAR_TWO_DIGIT_FORMAT, $current_date);
         $semester     = Call::semester($current_date);
-        $academic_year = $semester == SECOND_SEMESTER ? "$current_year" . $current_year+1 : $current_year-1 . "$current_year";
+        $academic_year = $semester == FIRST_SEMESTER ? "$current_year" . $current_year+1 : $current_year-1 . "$current_year";
         return $_ENV['BANK_CODE'] . $level . $academic_year . $nis;
     }
 

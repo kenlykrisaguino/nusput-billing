@@ -57,17 +57,29 @@ class StudentBE
         $query = "SELECT
                     u.id, u.nis, u.name, l.name AS level, g.name AS grade, s.name AS section,
                     u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee,
-                    MAX(p.trx_timestamp) AS latest_payment
+                    MAX(p.trx_timestamp) AS latest_payment, c.date_left
                   FROM
                     users u
-                    LEFT JOIN user_class c ON u.id = c.user_id
+                    LEFT JOIN (
+                        SELECT uc1.*
+                        FROM user_class uc1
+                        LEFT JOIN user_class uc2
+                            ON uc1.user_id = uc2.user_id
+                            AND (
+                                (uc2.date_left IS NULL AND uc1.date_left IS NOT NULL)
+                            OR
+                                (uc2.date_left > uc1.date_left AND uc2.date_left IS NOT NULL)
+                            OR
+                                (uc1.date_left <=> uc2.date_left AND uc2.id > uc1.id)
+                            )
+                        WHERE uc2.user_id IS NULL
+                    ) c ON u.id = c.user_id
                     INNER JOIN levels l ON c.level_id = l.id
                     INNER JOIN grades g ON c.grade_id = g.id
                     LEFT JOIN sections s ON c.section_id = s.id
                     LEFT JOIN payments p ON u.id = p.user_id
                   WHERE
                     u.role = 'ST' AND
-                    c.date_left IS NULL AND
                     u.deleted_at IS NULL
                   ";
 
@@ -99,7 +111,7 @@ class StudentBE
 
         $query .= " GROUP BY
                 u.id, u.nis, u.name, l.name, g.name, s.name,
-                u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee";
+                u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee, c.date_left";
 
         $result = $this->db->query($query);
         return $this->db->fetchAll($result);
@@ -354,7 +366,32 @@ class StudentBE
 
                 $newMonthlyFee = $monthlyFee;
                 $newLateFee = $lookup['late_fee'] ?? 0;
-                $va = FormatHelper::formatVA($lookup['va_prefix'], $nis);
+
+                // Get Active Semester
+                $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+                $logName = $this->db->fetchAssoc($this->db->query($log));
+                if(!empty($logName)){
+                    [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
+                    $date = "$year-$month-01";
+                } else {
+                    $split = Call::splitDate();
+                    $semester1 = Call::semester();
+                    $year = $split['year'];
+                    $month = $split['month'];
+                    $day = $split['day'];
+                    $date = "$year-$month-$day";
+                }
+
+                if (in_array($month, [6, 12])) {
+                    $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
+                    $logName = $this->db->fetchAssoc($this->db->query($log));
+
+                    [$title, $semester2, $year] = explode('-', $logName['log_name']);
+                    if ($semester1 != $semester2) {
+                        $date = "$year-" . ((int) $month + 1) . '-01';
+                    }
+                }
+                $va = FormatHelper::formatVA($lookup['va_prefix'], $nis, $date);
                 $password = md5($va);
 
                 $newClassData = [
@@ -862,6 +899,26 @@ class StudentBE
 
             $ids = $this->db->insert('users', $students);
 
+            
+            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+            $logName = $this->db->fetchAssoc($this->db->query($log));
+            if (!empty($logName)) {
+                [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
+                $date = "$year-$month-01";
+
+                if (in_array($month, [6, 12])) {
+                    $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
+                    $logName = $this->db->fetchAssoc($this->db->query($log));
+
+                    [$title, $semester2, $year] = explode('-', $logName['log_name']);
+                    if ($semester1 != $semester2) {
+                        $date = "$year-" . ((int) $month + 1) . '-01';
+                    }
+                }
+            } else {
+                $date = Call::date();
+            }
+
             $class_details = [];
             foreach ($ids as $id) {
                 foreach ($classes as $class) {
@@ -870,7 +927,7 @@ class StudentBE
                         $g_id = $class['grade_id'];
                         $s_id = $class['section_id'];
 
-                        $va = FormatHelper::formatVA($class_list[$l_id][$g_id][$s_id ?? '']['va_prefix'], $id['nis']);
+                        $va = FormatHelper::formatVA($class_list[$l_id][$g_id][$s_id ?? '']['va_prefix'], $id['nis'], $date);
 
                         $class_details[] = [
                             'user_id' => $id['id'],
@@ -900,11 +957,14 @@ class StudentBE
 
             [$title, $semester, $year, $monthInt] = explode('-', $logName['log_name']);
 
-            $months = Call::monthSemester();
-            $date = Call::splitDate();
+            $months = Call::monthSemester($date);
+            $dateSplit = Call::splitDate($date);
 
             $bills = [];
-            $academicYear = Call::academicYear();
+            $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
+                'semester' => $semester,
+                'date' => $dateSplit
+            ]);
 
             $strId = implode(',', array_column($ids, 'id'));
 
@@ -936,7 +996,7 @@ class StudentBE
 
             foreach ($students as $student) {
                 foreach ($months as $month) {
-                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/{$date['year']} 23:59:59"));
+                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/$year 23:59:59"));
 
                     if ($month < ((int) $monthInt) + 1) {
                         $monthStatus = $this->status['disabled'];
@@ -951,7 +1011,7 @@ class StudentBE
                         'class' => $student['class_name'],
                         'virtual_account' => $student['virtual_account'],
                         'academic_year' => $academicYear,
-                        'billing_month' => "$month/{$date['year']}",
+                        'billing_month' => "$month/{$dateSplit['year']}",
                         'due_date' => $due_date,
                         'payment_date' => null,
                         'status' => $monthStatus,
@@ -1514,8 +1574,8 @@ class StudentBE
                 foreach ($students as $student) {
                     $get_student_id[$student['nis']][$student['name']] = $student['id'];
                     $get_student_by_id[$student['id']] = [
-                        'nis'  => $student['nis'],
-                        'name' => $student['name']
+                        'nis' => $student['nis'],
+                        'name' => $student['name'],
                     ];
                     $student_id[] = $student['id'];
                 }
@@ -1536,7 +1596,27 @@ class StudentBE
                     $level = $student_new_class[$student['nis']]['level'];
                     $grade = $student_new_class[$student['nis']]['grade'];
                     $section = $student_new_class[$student['nis']]['section'];
-                    $va = FormatHelper::formatVA($classList[$level][$grade][$section ?? '']['va_prefix'], $student['nis']);
+                    
+                    $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+                    $logName = $this->db->fetchAssoc($this->db->query($log));
+                    if(!empty($logName)){
+                        [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
+                        $date = "$year-$month-01";
+                        
+                        if(in_array($month, [6, 12])){
+                            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
+                            $logName = $this->db->fetchAssoc($this->db->query($log));
+                            
+                            [$title, $semester2, $year] = explode('-', $logName['log_name']);
+                            if($semester1 != $semester2){
+                                $date = "$year-".((int)$month+1)."-01";
+                            }
+                        }
+                    } else {
+                        $date = Call::date();
+                    }
+
+                    $va = FormatHelper::formatVA($classList[$level][$grade][$section ?? '']['va_prefix'], $student['nis'], $date);
                     $class_details[] = [
                         'user_id' => $studentId,
                         'level_id' => $level,
@@ -1560,7 +1640,7 @@ class StudentBE
 
                 $bindValues = array_merge($student_id, [$status['active'], $status['inactive']]);
                 $billStmt = $this->db->query(
-                                "SELECT
+                    "SELECT
                                     id, user_id, trx_detail, payment_due
                                 FROM bills
                                 WHERE
@@ -1587,7 +1667,7 @@ class StudentBE
                     $class = $student_new_class[$user['nis']];
 
                     $class_meta = $classList[$class['level']][$class['grade']][$class['section'] ?? ''];
-                    $class_name = $class_meta['level_name'] . " " . $class_meta['grade_name'] . " " . $class_meta['section_name'];
+                    $class_name = $class_meta['level_name'] . ' ' . $class_meta['grade_name'] . ' ' . $class_meta['section_name'];
                     $items = [
                         [
                             'amount' => (float) $class_meta['monthly_fee'],
@@ -1628,15 +1708,15 @@ class StudentBE
                     $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
                     $detailsJSON = json_encode($detail, $jsonFlags);
 
-                    $query = "UPDATE 
-                                bills 
-                              SET 
-                                trx_detail = '$detailsJSON', 
-                                trx_amount = '$fee_total' 
-                              WHERE 
-                                trx_status IN ('$status[active]', '$status[inactive]') AND 
+                    $query = "UPDATE
+                                bills
+                              SET
+                                trx_detail = '$detailsJSON',
+                                trx_amount = '$fee_total'
+                              WHERE
+                                trx_status IN ('$status[active]', '$status[inactive]') AND
                                 id = $bill[id]";
-                    
+
                     $this->db->query($query);
                 }
                 $this->db->commit();

@@ -48,7 +48,7 @@ class Call
         $semester = $attr['semester'] ?? self::semester();
         $date = $attr['date'] ?? self::splitDate();
 
-        $startYear = $semester == FIRST_SEMESTER ? $date['year'] : $date['year']-1;
+        $startYear = $semester == FIRST_SEMESTER ? (int)$date['year'] : (int)$date['year']-1;
         $endYear = $startYear + 1;
         
         switch ($format) {

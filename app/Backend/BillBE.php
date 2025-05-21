@@ -40,7 +40,12 @@ class BillBE
         $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
         $logName = $this->db->fetchAssoc($this->db->query($log));
 
-        [$title, $semester, $year] = explode('-', $logName['log_name']);
+        if(!empty($logName)){
+            [$title, $semester, $year] = explode('-', $logName['log_name']);
+        } else {
+            $semester = Call::semester();
+            $year = Call::year();
+        }
 
         if ($semester == SECOND_SEMESTER) {
             $periodDate = "01-07-$year";
@@ -63,17 +68,17 @@ class BillBE
         $finalMonth = $params['semester'] == SECOND_SEMESTER ? 6 : 12;
 
         $query = "SELECT
-                  b.virtual_account, u.nis, u.name,
-                  CONCAT(
+                    MAX(suc.virtual_account) AS virtual_account, u.nis, u.name,
+                    CONCAT(
                     COALESCE(l.name, ''),
                     ' ',
                     COALESCE(g.name, ''),
                     ' ',
-                    COALESCE(S.name, '')
-                  ) AS class_name,
-                  SUM(CASE WHEN b.trx_status = '$status[late]' THEN c.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status = '$status[paid]' OR b.trx_status = '$status[late]' THEN b.trx_amount ELSE 0 END) AS penerimaan,
-                  SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status IN ('$status[active]', '$status[unpaid]') THEN b.trx_amount ELSE 0 END) AS tagihan,
-                  (SELECT SUM(late_fee) FROM bills nb WHERE nb.virtual_account = b.virtual_account AND MONTH(nb.payment_due) <= $finalMonth AND YEAR(nb.payment_due)<=$filterYear AND nb.trx_status = '$status[unpaid]') AS tunggakan, ";
+                    COALESCE(s.name, '')
+                    ) AS class_name,
+                    SUM(CASE WHEN b.trx_status = '{$status['late']}' THEN suc.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status = '{$status['paid']}' OR b.trx_status = '{$status['late']}' THEN b.trx_amount ELSE 0 END) AS penerimaan,
+                    SUM(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN b.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status IN ('{$status['active']}', '{$status['unpaid']}') THEN b.trx_amount ELSE 0 END) AS tagihan,
+                    (SELECT SUM(nb.late_fee) FROM bills nb JOIN users nu ON nu.id = nb.user_id LEFT JOIN user_class nuc ON nu.id = nuc.user_id WHERE nuc.virtual_account = suc.virtual_account AND MONTH(nb.payment_due) <= {$finalMonth} AND YEAR(nb.payment_due)<={$filterYear} AND nb.trx_status = '{$status['unpaid']}') AS tunggakan";
 
         $months = Call::monthNameSemester($params['semester']);
 
@@ -96,7 +101,7 @@ class BillBE
             $filterQuery .= " AND (
                         u.nis LIKE '%$search%' OR
                         u.name LIKE '%$search%' OR
-                        c.virtual_account LIKE '%$search%'
+                        suc.virtual_account LIKE '%$search%'
                     )";
         }
 
@@ -108,34 +113,41 @@ class BillBE
             $max = "$filterYear-12-31";
         }
 
-        $query .= implode(', ', $monthQuery);
+        if (!empty($monthQuery)) {
+            $query .= ", " . implode(', ', $monthQuery);
+        }
 
-        $query .= " FROM
-                   bills b
-                   INNER JOIN users u ON b.user_id = u.id
-                   LEFT JOIN user_class c ON u.id = c.user_id
-                   LEFT JOIN levels l ON c.level_id = l.id
-                   LEFT JOIN grades g ON c.grade_id = g.id
-                   LEFT JOIN sections S ON c.section_id = S.id
-                   WHERE TRUE AND c.date_left IS NULL AND b.payment_due BETWEEN '$min' AND '$max' $filterQuery";
-        
-        // $query .= " FROM
-        //            bills b
-        //            INNER JOIN users u ON b.user_id = u.id
-        //            LEFT JOIN user_class c ON u.id = c.user_id
-        //            LEFT JOIN levels l ON c.level_id = l.id
-        //            LEFT JOIN grades g ON c.grade_id = g.id
-        //            LEFT JOIN sections S ON c.section_id = S.id
-        //            WHERE TRUE AND c.date_left IS NULL $filterQuery";
+        $query .= "FROM
+                    bills b
+                    INNER JOIN users u ON b.user_id = u.id
+                    LEFT JOIN (
+                        SELECT uc1.*
+                        FROM user_class uc1
+                        LEFT JOIN user_class uc2
+                            ON uc1.user_id = uc2.user_id
+                            AND (
+                                (uc2.date_left IS NULL AND uc1.date_left IS NOT NULL)
+                            OR
+                                (uc2.date_left > uc1.date_left AND uc2.date_left IS NOT NULL)
+                            OR
+                                (uc1.date_left <=> uc2.date_left AND uc2.id > uc1.id)
+                            )
+                        WHERE uc2.user_id IS NULL
+                    ) AS suc ON u.id = suc.user_id
+                    LEFT JOIN levels l ON suc.level_id = l.id
+                    LEFT JOIN grades g ON suc.grade_id = g.id
+                    LEFT JOIN sections s ON suc.section_id = s.id
+                WHERE
+                    TRUE $filterQuery";
 
         $query .= " GROUP BY
-                  b.virtual_account, u.nis, u.name,
+                  suc.virtual_account, u.nis, u.name,
                   CONCAT(
                     COALESCE(l.name, ''),
                     ' ',
                     COALESCE(g.name, ''),
                     ' ',
-                    COALESCE(S.name, '')
+                    COALESCE(s.name, '')
                   )";
 
         $result = $this->db->query($query);
@@ -542,8 +554,8 @@ class BillBE
 
         $query = "SELECT
                     b.virtual_account AS va, l.name AS prefix, u.name AS name, u.parent_phone,
-                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) +
-                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) AS total_payment
+                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS late_fee,
+                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) AS monthly_fee
                   FROM
                     bills b JOIN
                     users u ON b.user_id = u.id JOIN
@@ -563,10 +575,12 @@ class BillBE
         $msg_data = [];
 
         foreach ($data as $student) {
-            $trx_amount = FormatHelper::formatRupiah($student['total_payment']);
+            $monthly_fee = FormatHelper::formatRupiah($student['monthly_fee']);
+            $late_fee = FormatHelper::formatRupiah($student['late_fee']);
+            $trx_amount = FormatHelper::formatRupiah($student['monthly_fee'] + $student['late_fee']);
             $va = $student['va'];
             $va_name = $student['prefix'] . '_' . $student['name'];
-            $user_msg = $message[BILL_STATUS_UNPAID] . "Total Pembayaran: $trx_amount\nVirtual Account: BNI *$va* atas nama *$va_name*";
+            $user_msg = $message[BILL_STATUS_UNPAID] . "SPP: $monthly_fee\nDenda: $late_fee\n*Total Pembayaran: $trx_amount*\n\nVirtual Account: BNI *$va* atas nama *$va_name*";
             $msg_data[] = [
                 'target' => $student['parent_phone'],
                 'message' => $user_msg,

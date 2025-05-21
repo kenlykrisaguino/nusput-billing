@@ -958,7 +958,7 @@ async function submitEditStudent(button) {
   let missingField = false;
   let firstMissingFieldName = "";
   for (const fieldName of alwaysRequiredFields) {
-    const value = dataToSend[fieldName]; // Check the constructed object
+    const value = dataToSend[fieldName];
     if (!value || (typeof value === "string" && value.trim() === "")) {
       const fieldElement = form.querySelector(`[name="${fieldName}"]`);
       const label = fieldElement?.labels?.[0]?.textContent || fieldName;
@@ -999,7 +999,7 @@ async function submitEditStudent(button) {
     alert(result.message || "Data siswa berhasil diperbarui!");
     closeModal("edit-student");
     console.info(result);
-    // location.reload();
+    location.reload();
   } catch (error) {
     console.error("Fetch Error:", error);
     alert(`Terjadi kesalahan: ${error.message}`);

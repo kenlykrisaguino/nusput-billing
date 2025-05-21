@@ -97,8 +97,21 @@ class RecapBE
                         THEN b.late_fee ELSE 0 END), 0) 
                     AS tunggakan
                   FROM bills b
-                  INNER JOIN users u ON b.user_id = u.id
-                  INNER JOIN user_class c ON u.id = c.user_id
+                  LEFT JOIN users u ON b.user_id = u.id
+                  LEFT JOIN (
+                        SELECT uc1.*
+                        FROM user_class uc1
+                        LEFT JOIN user_class uc2
+                            ON uc1.user_id = uc2.user_id
+                            AND (
+                                (uc2.date_left IS NULL AND uc1.date_left IS NOT NULL)
+                            OR
+                                (uc2.date_left > uc1.date_left AND uc2.date_left IS NOT NULL)
+                            OR
+                                (uc1.date_left <=> uc2.date_left AND uc2.id > uc1.id)
+                            )
+                        WHERE uc2.user_id IS NULL
+                    ) c ON u.id = c.user_id
                   LEFT JOIN levels l ON c.level_id = l.id
                   LEFT JOIN grades g ON c.grade_id = g.id
                   LEFT JOIN sections s ON c.section_id = s.id
