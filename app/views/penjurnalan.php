@@ -64,6 +64,8 @@ $paid_late_fee   = $journals['paid_late_fee'] ?? 0;
     <div class="md:col-span-3">
         <button type="submit"
             class="cursor-pointer px-4 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-700">Filter</button>
+        <button type="button" id="export-btn"
+            class="cursor-pointer px-4 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-700">Export</button>
     </div>
 </form>
 

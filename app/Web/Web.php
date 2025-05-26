@@ -264,6 +264,10 @@ class Web
                 $this->billBE->exportBillXLSX();
                 $this->back();
                 break;
+            case 'journals':
+                $this->journalBE->getJournals(null, false, true);
+                $this->back();
+                break;
         }
     }
 

@@ -96,8 +96,10 @@
                 <?php foreach($students as $student) :?>
                 <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
                     <td class="px-6 py-4 flex gap-2">
-                        <i class="fa-solid fa-pencil cursor-pointer hover:text-blue-300 transition-colors"
-                            onclick="editStudent('<?= htmlspecialchars($student['id']) ?>')"></i>
+                        <?php if(!isset($student['date_left'])): ?>
+                            <i class="fa-solid fa-pencil cursor-pointer hover:text-blue-300 transition-colors"
+                                onclick="editStudent('<?= htmlspecialchars($student['id']) ?>')"></i>
+                        <?php endif ?>
                     </td>
                     <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
                         <?= htmlspecialchars($student['name']) ?>

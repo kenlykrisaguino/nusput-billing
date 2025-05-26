@@ -144,7 +144,6 @@ class AuthBE
         $now = Call::timestamp();
 
         $updateQuery = $this->db->update('users', ['otp_code' => $token, 'otp_created' => $now], ['id' => $user['id']]);
-// 
         if(!$updateQuery){
             return false;
         }
@@ -181,6 +180,7 @@ class AuthBE
 
         return ApiResponse::success($token, 'Berhasil mengirimkan OTP');
     }
+
     public function verifyOTP()
     {
         if ($_SERVER['REQUEST_METHOD'] != 'POST') {
@@ -199,6 +199,7 @@ class AuthBE
 
         return ApiResponse::success(null, 'OTP Telah Terverifikasi');
     }
+    
     public function updatePassword()
     {
         if ($_SERVER['REQUEST_METHOD'] != 'POST') {

@@ -243,6 +243,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const yearSelect = document.querySelector("#year-filter");
   const semesterSelect = document.querySelector("#semester-filter");
   const monthSelect = document.querySelector("#month-filter");
+  const searchInput = document.querySelector("#search");
+  const exportButton = document.querySelector("#export-btn");
   const currentYear = new Date().getFullYear();
   const yearOptions = [];
   for (let y = currentYear + 1; y >= currentYear - 5; y--) {
@@ -279,4 +281,35 @@ document.addEventListener("DOMContentLoaded", () => {
     "Pilih Bulan",
     true
   );
+
+  if (exportButton) {
+    exportButton.addEventListener("click", () => {
+      const params = new URLSearchParams();
+      if (levelSelectFilter && levelSelectFilter.value) {
+        params.append("level-filter", levelSelectFilter.value);
+      }
+      if (gradeSelectFilter && gradeSelectFilter.value) {
+        params.append("grade-filter", gradeSelectFilter.value);
+      }
+      if (sectionSelectFilter && sectionSelectFilter.value) {
+        params.append("section-filter", sectionSelectFilter.value);
+      }
+      if (yearSelect && yearSelect.value) {
+        params.append("year-filter", yearSelect.value);
+      }
+      if (semesterSelect && semesterSelect.value) {
+        params.append("semester-filter", semesterSelect.value);
+      }
+      if (monthSelect && monthSelect.value) {
+        params.append("month-filter", monthSelect.value);
+      }
+      if (searchInput && searchInput.value) {
+        params.append("search", searchInput.value);
+      }
+
+      const exportUrl = `/exports/journals?${params.toString()}`;
+      console.log("Exporting with URL:", exportUrl);
+      window.location.href = exportUrl; 
+    });
+  }
 });

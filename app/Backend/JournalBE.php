@@ -4,7 +4,15 @@ namespace app\Backend;
 
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
+use App\Helpers\FormatHelper;
 use DateTime;
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Pdf\Mpdf;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
 class JournalBE
 {
@@ -45,13 +53,14 @@ class JournalBE
         }
 
         if (($params['start_date'] != NULL_VALUE) & ($params['end_date'] != NULL_VALUE)) {
-            $start_date = $params['start_date'];
-            $end_date = $params['end_date'];
-            $date = new DateTime($end_date);
-            $date->modify('+1 month');
-            $end_date_plus_one_month = $date->format('Y-m-d');
+            $startDateStr = $params['start_date'];
+            $startDate = new DateTime($startDateStr);
+            $start_date_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end_date'];
+            $endDate = new DateTime($endDateStr);
+            $end_date_plus_one_month = $endDate->format('Y-m-d');
 
-            $paramQuery .= " AND b.payment_due >= '$start_date' AND b.payment_due <= '$end_date_plus_one_month'";
+            $paramQuery .= " AND b.payment_due >= '$start_date_plus_one_month' AND b.payment_due <= '$end_date_plus_one_month'";
         }
 
         $query = "SELECT
@@ -73,7 +82,7 @@ class JournalBE
 
         return $result;
     }
-    protected function getTransaction($params = [])
+    protected function getTransaction(bool $for_akt, $params = [] )
     {
         $paramQuery = NULL_VALUE;
 
@@ -92,13 +101,21 @@ class JournalBE
         }
 
         if (($params['start_date'] != NULL_VALUE) & ($params['end_date'] != NULL_VALUE)) {
-            $start_date = $params['start_date'];
-            $end_date = $params['end_date'];
-            $date = new DateTime($end_date);
-            $date->modify('+1 month');
-            $end_date_plus_one_month = $date->format('Y-m-d');
+            $startDateStr = $params['start_date'];
+            $startDate = new DateTime($startDateStr);
+            if($for_akt){
+                $startDate->modify('-1 month');
+            }
+            $start_date_minus_one_month = $startDate->format('Y-m-d');
 
-            $paramQuery .= " AND b.payment_due >= '$start_date' AND b.payment_due <= '$end_date_plus_one_month'";
+            $endDateStr = $params['end_date'];
+            $endDate = new DateTime($endDateStr);
+            if($for_akt){
+                $endDate->modify('-1 month');
+            }
+            $end_date_minus_one_month = $endDate->format('Y-m-d');
+
+            $paramQuery .= " AND b.payment_due >= '$start_date_minus_one_month' AND b.payment_due <= '$end_date_minus_one_month'";
         }
 
         $query = "SELECT
@@ -211,38 +228,36 @@ class JournalBE
         return $result;
     }
 
-    public function getJournals($level = null)
+    public function getJournals($level = null, $for_akt = false, $for_export = false)
     {
-        $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-        $logName = $this->db->fetchAssoc($this->db->query($log));
+        $journalDate = $this->getDate();
+        $monthInt = $journalDate['month'];
 
-        $academicYear = Call::academicYear();
-        $splitDate = Call::splitDate();
-
-        if ($logName == null) {
-            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-            $logName = $this->db->fetchAssoc($this->db->query($log));
-
-            if ($logName == null) {
-                return [
-                    'per_first_day' => 0.00,
-                    'per_tenth_day' => 0.00,
-                    'late_fee_amount' => 0.00,
-                    'paid_late_fee' => 0.00,
-                ];
-            }
-
-            [$title, $semester, $year] = explode('-', $logName['log_name']);
-            $semester = $semester === FIRST_SEMESTER ? 1 : 2;
-            $monthInt = $semester === 1 ? 7 : 1;
-            $monthInt = $splitDate['day'] <= 10 ? $monthInt + 1 : $monthInt;
-        } else {
-            [$title, $semester, $year, $monthInt] = explode('-', $logName['log_name']);
-            $semester = Call::semester() == FIRST_SEMESTER ? 1 : 2;
-            $monthInt = $splitDate['day'] <= 10 ? $monthInt + 1 : $monthInt;
+        if($monthInt === 0){
+            $journal_details =  [
+                                    'per_first_day' => 0,
+                                    'per_tenth_day' => 0,
+                                    'late_fee_amount' => 0,
+                                    'paid_late_fee' => 0,
+                                ];
+            return $journal_details;
         }
 
+
+        $listedDetails = $journalDate['details'];
+
+        $semester       = $listedDetails[1];
+        $year           = $listedDetails[2];
+        $month          = isset($listedDetails[3]) ? $listedDetails[3] : null;
+
+
         $month = sprintf('%02d', $monthInt);
+
+        $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
+            'semester'  => $semester == 1 ? FIRST_SEMESTER : SECOND_SEMESTER,
+            'date'      => Call::splitDate("01-$month-$year")
+        ]);
+        $splitDate = Call::splitDate();
 
         $params = [
             'search' => $_GET['search'] ?? NULL_VALUE,
@@ -257,14 +272,11 @@ class JournalBE
         $startSemester = Call::getFirstDay(
             [
                 'year' => $params['academic_year'],
-                'semester' => $params['semester'],
-                'month' => $params['semester'] == 1 ? '07' : '01',
+                'semester' => $params['semester'] == FIRST_SEMESTER ? 1 : 2,
+                'month' => $params['semester'] == FIRST_SEMESTER ? '07' : '01',
             ],
             FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS,
         );
-
-        $modifyDate = new DateTime("01-$month-$year");
-        $startMonth = $modifyDate->format(DATE_FORMAT);
 
         $modifyDate = new DateTime("11-$params[month]-$year");
         if ((int) $splitDate['day'] <= 10 && $params['month'] != $month) {
@@ -273,18 +285,305 @@ class JournalBE
         $endRange = $modifyDate->format(DATE_FORMAT);
         $modifyDate->modify('last day of this month');
         $dueDateParamMonth = $modifyDate->format(DATE_FORMAT);
-
-        $startDateParams = array_merge($params, ['start_date' => $startSemester, 'end_date' => $endRange]);
-        $dueDateParams = array_merge($params, ['start_date' => $startMonth, 'end_date' => $dueDateParamMonth]);
+        $firstDayMonth = $modifyDate->modify('first day of this month');
+        $firstDayOfTheMonth = $firstDayMonth->format(DATE_FORMAT);
+        $startDateParams = array_merge($params, ['start_date' => $for_akt ? $firstDayOfTheMonth : $startSemester, 'end_date' => $endRange]);
+        $dueDateParams = array_merge($params, ['start_date' => $for_akt ? $firstDayOfTheMonth : $startSemester, 'end_date' => $dueDateParamMonth]);
         $startDateResult = $this->getUnpaidTransaction($startDateParams);
-        $dueDateResult = $this->getTransaction($dueDateParams);
+        $dueDateResult = $this->getTransaction($for_akt, $dueDateParams);
         $lateFeeResult = $this->getLateFee($startDateParams);
         $paidLateResult = $this->getPaidLateFee($startDateParams);
-        return [
-            'per_first_day' => $startDateResult['bank'],
-            'per_tenth_day' => $dueDateResult['amount'],
-            'late_fee_amount' => $lateFeeResult['late_fee'],
-            'paid_late_fee' => $paidLateResult['late_fee'],
+
+        $journal_details =  [
+                                'per_first_day' => $startDateResult['bank'],
+                                'per_tenth_day' => $dueDateResult['amount'],
+                                'late_fee_amount' => $lateFeeResult['late_fee'],
+                                'paid_late_fee' => $paidLateResult['late_fee'],
+                            ];
+        if ($for_export){
+            $this->exportJournals($journal_details, $params);
+        }
+        return $journal_details;
+    }
+
+    protected function getDate() : array
+    {
+        $checkLatestStatus = "SELECT log_name 
+                              FROM logs 
+                              WHERE log_name LIKE 'BCHECK-%' OR log_name LIKE 'BCREATE-%'
+                              ORDER BY created_at DESC 
+                              LIMIT 1;";
+        
+        $checkLatestLog = $this->db->fetchAssoc($this->db->query($checkLatestStatus));
+        if(isset($checkLatestLog)){
+            $checkLog       = explode('-', $checkLatestLog['log_name']);
+        } else {
+            return ['month' => 0];
+        }
+
+        if($checkLog[0] === LOG_CREATE_BILLS){
+            $log = "SELECT log_name, created_at FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
+            $logDetail = $this->db->fetchAssoc($this->db->query($log));
+        } else if($checkLog[0] == LOG_CHECK_BILLS) {
+            $log = "SELECT log_name, created_at FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
+            $logDetail = $this->db->fetchAssoc($this->db->query($log));
+        } else {
+            return ['month' => 0];
+        }
+
+        $logName = $logDetail['log_name'];
+        $logTime = $logDetail['created_at'];
+
+        $listedDetails  = explode('-', $logName);
+        $semester       = $listedDetails[1];
+        $year           = $listedDetails[2];
+        $actMonth       = isset($listedDetails[3]) ? $listedDetails[3] : null;
+
+        $logTime = new DateTime($logTime);
+        
+        $logMonth = (int)$logTime->format('m');
+
+        if(!isset($actMonth)){
+            $monthInt = $semester === FIRST_SEMESTER ? 7 : 1;
+            return ['month' => $monthInt, 'details' => $listedDetails, 'type' => 'create'];
+        }
+
+        $actTime = new DateTime("10-$actMonth-$year 23:59:59");
+        $diff = $logTime->diff($actTime);
+
+        if($diff->m === 0) { // in range of current bills
+            if($logMonth === $actMonth) { // on the same month
+                return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
+            }
+            if($diff->invert === 1){ // before the month
+                return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
+            }
+            return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
+        }
+
+        return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
+    }
+
+    public function exportJournals($data, $filter)
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $sheet->getPageSetup()
+            ->setOrientation(PageSetup::ORIENTATION_PORTRAIT)
+            ->setPaperSize(PageSetup::PAPERSIZE_A4);
+
+        $margin = 0.50;
+        $sheet->getPageMargins()->setTop($margin);
+        $sheet->getPageMargins()->setRight($margin);
+        $sheet->getPageMargins()->setLeft($margin);
+        $sheet->getPageMargins()->setBottom($margin);
+
+        $formatCurrency = function ($amount) {
+            return FormatHelper::formatRupiah($amount);
+        };
+
+        // Adjusted column widths slightly for better fit
+        $sheet->getColumnDimension('A')->setWidth(20); // Label for left block
+        $sheet->getColumnDimension('B')->setWidth(15); // Value for left block
+        $sheet->getColumnDimension('C')->setWidth(2);  // Spacer column
+
+        $sheet->getColumnDimension('D')->setWidth(20); // Label for right block
+        $sheet->getColumnDimension('E')->setWidth(15); // Value for right block
+        // Column F is not explicitly sized, can be used as a far right spacer or for overflow if needed.
+
+
+        $sheet->mergeCells('A1:E1');
+        $sheet->setCellValue('A1', 'Data Penjurnalan');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $sheet->getRowDimension(1)->setRowHeight(22);
+
+        $sheet->mergeCells('A2:E2');
+        $sheet->setCellValue('A2', 'Sekolah Nusaputera Semarang');
+        $sheet->getStyle('A2')->getFont()->setSize(11);
+        $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $sheet->getRowDimension(2)->setRowHeight(18);
+
+        $sheet->mergeCells('A3:E3');
+        // Apply border to the bottom of A3 to create the line
+        $sheet->getStyle('A3:E3')->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
+        $sheet->getStyle('A3:E3')->getBorders()->getBottom()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+
+        $sheet->getRowDimension(3)->setRowHeight(5);
+
+        $currentRow = 4;
+
+        $headerStyleArray = [
+            'font' => ['bold' => true, 'size' => 10],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            'borders' => [
+                'allBorders' => [ // This applies to all individual borders of the cell(s)
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ],
+            ],
         ];
+        $cellStyleArray = [
+            'font' => ['size' => 10],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ],
+            ],
+        ];
+        $rowHeightHeaderTables = 18;
+
+        $sheet->mergeCells('A'.$currentRow.':A'.$currentRow)->setCellValue('A'.$currentRow, 'Semester');
+        $sheet->mergeCells('B'.$currentRow.':C'.$currentRow)->setCellValue('B'.$currentRow, 'Tahun Ajaran');
+        $sheet->mergeCells('D'.$currentRow.':E'.$currentRow)->setCellValue('D'.$currentRow, 'Kelas');
+        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($headerStyleArray);
+        $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
+        $currentRow++;
+
+        $semesterText = '';
+        if (($filter['semester-filter'] ?? null) == 1) $semesterText = 'Ganjil';
+        elseif (($filter['semester-filter'] ?? null) == 2) $semesterText = 'Genap';
+        else $semesterText = (string)($filter['semester-filter'] ?? '');
+        $tahunAjaranText = $filter['year-filter'] ?? '';
+        $kelasText = '';
+
+        $sheet->mergeCells('A'.$currentRow.':A'.$currentRow)->setCellValue('A'.$currentRow, $semesterText);
+        $sheet->mergeCells('B'.$currentRow.':C'.$currentRow)->setCellValue('B'.$currentRow, $tahunAjaranText);
+        $sheet->mergeCells('D'.$currentRow.':E'.$currentRow)->setCellValue('D'.$currentRow, $kelasText);
+        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($cellStyleArray);
+        $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
+        $currentRow++;
+        $currentRow++;
+
+        $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, 'Nama');
+        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($headerStyleArray); // Use array for merged cell
+        $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
+        $currentRow++;
+
+        $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, '-');
+        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($cellStyleArray); // Use array for merged cell
+        $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
+        $currentRow++;
+        $currentRow++;
+
+        $drawJournalSubTable = function (
+            $sheet,
+            $labelCol, $valueCol, $startRow,
+            $title,
+            $label1, $value1, $isLabel1Bold, $label1Align,
+            $label2, $value2, $isLabel2Bold, $label2Align,
+            $formatCurrencyFunc
+        ) use ($rowHeightHeaderTables) {
+
+            $titleCellsRange = $labelCol.$startRow.':'.$valueCol.$startRow;
+            $sheet->mergeCells($titleCellsRange);
+            $sheet->setCellValue($labelCol.$startRow, $title);
+            $styleTitle = $sheet->getStyle($titleCellsRange); // Apply to the merged range
+            $styleTitle->getFont()->setBold(true)->setSize(9);
+            $styleTitle->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
+            $styleTitle->getBorders()->getTop()->setBorderStyle(Border::BORDER_THIN);
+            $styleTitle->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
+            $styleTitle->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
+            // For merged cells, bottom border on title is not needed if rows below have top border
+
+            $sheet->getRowDimension($startRow)->setRowHeight($rowHeightHeaderTables - 2);
+            $row = $startRow + 1;
+
+            // Row 1
+            $sheet->setCellValue($labelCol.$row, $label1);
+            $styleL1 = $sheet->getStyle($labelCol.$row);
+            $styleL1->getFont()->setBold($isLabel1Bold)->setSize(9);
+            $styleL1->getAlignment()->setHorizontal($label1Align)->setVertical(Alignment::VERTICAL_CENTER);
+            $styleL1->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
+            $styleL1->getBorders()->getTop()->setBorderStyle(Border::BORDER_NONE); // No top border if title has bottom
+            $styleL1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_HAIR);
+
+
+            $sheet->setCellValue($valueCol.$row, $formatCurrencyFunc($value1));
+            $styleV1 = $sheet->getStyle($valueCol.$row);
+            $styleV1->getFont()->setBold(false)->setSize(9);
+            $styleV1->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT)->setVertical(Alignment::VERTICAL_CENTER);
+            $styleV1->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
+            $styleV1->getBorders()->getTop()->setBorderStyle(Border::BORDER_NONE);
+            $styleV1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_HAIR);
+
+
+            $sheet->getRowDimension($row)->setRowHeight($rowHeightHeaderTables - 2);
+            $row++;
+
+            // Row 2
+            $sheet->setCellValue($labelCol.$row, $label2);
+            $styleL2 = $sheet->getStyle($labelCol.$row);
+            $styleL2->getFont()->setBold($isLabel2Bold)->setSize(9);
+            $styleL2->getAlignment()->setHorizontal($label2Align)->setVertical(Alignment::VERTICAL_CENTER);
+            $styleL2->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
+            $styleL2->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
+
+
+            $sheet->setCellValue($valueCol.$row, $formatCurrencyFunc($value2));
+            $styleV2 = $sheet->getStyle($valueCol.$row);
+            $styleV2->getFont()->setBold(false)->setSize(9);
+            $styleV2->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT)->setVertical(Alignment::VERTICAL_CENTER);
+            $styleV2->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
+            $styleV2->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
+
+            $sheet->getRowDimension($row)->setRowHeight($rowHeightHeaderTables - 2);
+
+            return $row + 1;
+        };
+
+        $dataStartRow = $currentRow;
+
+        $nextRowLeft = $drawJournalSubTable(
+            $sheet, 'A', 'B', $dataStartRow,
+            'PENERBITAN UANG SEKOLAH',
+            'PIUT UANG SEKOLAH', $data['per_first_day'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
+            'PENERIMAAN - UANG SEKOLAH', $data['per_first_day'] ?? 0, false, Alignment::HORIZONTAL_LEFT,
+            $formatCurrency
+        );
+
+        $nextRowRight = $drawJournalSubTable(
+            $sheet, 'D', 'E', $dataStartRow,
+            'PELUNASAN UANG SEKOLAH',
+            'BANK BNI', $data['per_tenth_day'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
+            'PIUT. UANG SEKOLAH', $data['per_tenth_day'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
+            $formatCurrency
+        );
+
+        $currentRow = max($nextRowLeft, $nextRowRight);
+        // Remove extra spacer, let tables stack if needed or adjust $rowHeightHeaderTables
+        // $currentRow++;
+
+        $nextRowLeft = $drawJournalSubTable(
+            $sheet, 'A', 'B', $currentRow,
+            'PENERBITAN DENDA',
+            'PIUT. DENDA', $data['late_fee_amount'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
+            'PENERIMAAN - UANG DENDA', $data['late_fee_amount'] ?? 0, false, Alignment::HORIZONTAL_LEFT,
+            $formatCurrency
+        );
+
+        $nextRowRight = $drawJournalSubTable(
+            $sheet, 'D', 'E', $currentRow,
+            'PEMBAYARAN DENDA LUNAS',
+            'BANK BNI', $data['paid_late_fee'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
+            'PIUT. DENDA', $data['paid_late_fee'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
+            $formatCurrency
+        );
+
+
+        \PhpOffice\PhpSpreadsheet\IOFactory::registerWriter('Pdf', Mpdf::class);
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Pdf');
+
+        $pdfFilename = 'Data_Penjurnalan_Lengkap_' . str_replace('/', '-', $tahunAjaranText) . '_' . $semesterText . '.pdf';
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment;filename="' . $pdfFilename . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit;
     }
 }

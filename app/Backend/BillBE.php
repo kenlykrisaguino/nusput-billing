@@ -265,7 +265,7 @@ class BillBE
             $status = $this->status;
 
             // ! INISIASI KALAU ENGGA ADA BILLS SAMA SEKALI SEBELUMNYA
-            $check_bills = ["SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[paid]') AND payment_due <= NOW()", "SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[active]') AND payment_due <= NOW()"];
+            $check_bills = ["SELECT MAX(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[paid]') AND payment_due <= NOW()", "SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[active]') AND payment_due <= NOW()"];
             $log_attr = '';
 
             foreach ($check_bills as $check) {
@@ -414,7 +414,7 @@ class BillBE
         ];
 
         foreach ($levels as $level) {
-            $journals = $this->journal->getJournals($level['id']);
+            $journals = $this->journal->getJournals($level['id'], true);
             if (in_array($level['name'], $smk1)) {
                 if (!isset($journalData['SMK1'])) {
                     $journalData['SMK1'] = [
@@ -439,6 +439,7 @@ class BillBE
         }
 
         $bulan = FormatHelper::formatMonthNameInBahasa($month);
+        $bulan_sebelum = FormatHelper::formatMonthNameInBahasa($month - 1);
         $postValue = [];
         foreach ($journalData as $level => $journalLevel) {
             foreach ($journalLevel as $code => $amount) {
@@ -449,7 +450,7 @@ class BillBE
                         'sumber_dana' => $import_akt_data['sumber_dana'],
                         'nama_jenjang' => $level,
                         'saldo' => $amount,
-                        'bulan' => $bulan,
+                        'bulan' => $code == 'PLUS' ? $bulan_sebelum : $bulan,
                     ];
                 }
             }
@@ -1063,6 +1064,7 @@ class BillBE
             return Response::error('Failed to create bills: ' . $e->getMessage(), 500);
         }
     }
+    
     public function manualCheckBills()
     {
         try {
@@ -1071,7 +1073,7 @@ class BillBE
             $status = $this->status;
 
             // ! INISIASI KALAU ENGGA ADA BILLS SAMA SEKALI SEBELUMNYA
-            $check_bills = ["SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[paid]')", "SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[active]')"];
+            $check_bills = ["SELECT MAX(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[paid]')", "SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[active]')"];
             $log_attr = '';
 
             foreach ($check_bills as $check) {

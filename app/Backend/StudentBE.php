@@ -1338,14 +1338,17 @@ class StudentBE
 
     public function bulkUpdateStudentsFromXLSX()
     {
+        // Cek request method
         if ($_SERVER['REQUEST_METHOD'] != 'POST') {
             return ApiResponse::error('Invalid API endpoint', 405);
         }
 
+        // Kalau error di upload file
         if (!isset($_FILES['bulk-update-students']) || $_FILES['bulk-update-students']['error'] !== UPLOAD_ERR_OK) {
             return ApiResponse::error('File upload error occurred.', 400);
         }
 
+        // Cek Tipe File
         $filePath = $_FILES['bulk-update-students']['tmp_name'];
         $allowedMimes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
         $fileMime = mime_content_type($filePath);
@@ -1361,6 +1364,7 @@ class StudentBE
         $processedRowCount = 0;
         $importedRowCount = 0;
 
+        // MAPPING DATA DARI XLSX KE VAR
         try {
             $classList = $this->getClassList();
             if (empty($classList)) {
@@ -1514,6 +1518,7 @@ class StudentBE
             return ApiResponse::error('Error reading, processing the XLSX file, or loading class data.', 500);
         }
 
+        // KALAU ADA ERROR DI DATA
         if (!empty($errorRowsData)) {
             $errorSpreadsheet = new Spreadsheet();
             $errorSheet = $errorSpreadsheet->getActiveSheet();
@@ -1549,11 +1554,14 @@ class StudentBE
             $writer->save('php://output');
             exit();
         } elseif (!empty($validStudentData)) {
+            // KALAU DATA VALID
             try {
                 $this->db->beginTransaction();
                 $nisPlaceholders = implode(',', array_fill(0, count($validNIS), '?'));
                 $namePlaceholders = implode(',', array_fill(0, count($validName), '?'));
-                // ! UNSET ACTIVE CLASS KE SEMUA SISWA
+
+                // TODO: UNSET ACTIVE CLASS KE SEMUA SISWA
+
                 $unset = "UPDATE
                             user_class c INNER JOIN
                             users u ON u.id = c.user_id
@@ -1563,6 +1571,8 @@ class StudentBE
                             u.role = 'ST'";
                 $this->db->query($unset);
 
+                // TODO: DAPETIN ID USER YANG DIUPDATE SESUAI DENGAN NAMA DAN NIS NYA YANG DIUPDATE
+                
                 $stmt = "SELECT id, nis, name FROM users u WHERE nis IN ($nisPlaceholders) AND name IN ($namePlaceholders)";
 
                 $query = $this->db->query($stmt, array_merge($validNIS, $validName));
@@ -1571,6 +1581,9 @@ class StudentBE
                 $get_student_id = [];
                 $get_student_by_id = [];
                 $student_id = [];
+
+                // TODO: MAPPING SISWA YANG DIUPDATE
+                
                 foreach ($students as $student) {
                     $get_student_id[$student['nis']][$student['name']] = $student['id'];
                     $get_student_by_id[$student['id']] = [
@@ -1580,6 +1593,8 @@ class StudentBE
                     $student_id[] = $student['id'];
                 }
 
+                // TODO: MAPPING KELAS SISWA YANG DIUPDATE
+                
                 $student_new_class = [];
                 foreach ($validClassDetails as $details) {
                     $student_new_class[$details['nis']] = [
@@ -1592,11 +1607,16 @@ class StudentBE
                 $class_details = [];
 
                 foreach ($validStudentData as $student) {
+                    
+                    // TODO: DAPETIN DATA DARI MAPPING YANG DIBUAT
+                
                     $studentId = $get_student_id[$student['nis']][$student['name']];
                     $level = $student_new_class[$student['nis']]['level'];
                     $grade = $student_new_class[$student['nis']]['grade'];
                     $section = $student_new_class[$student['nis']]['section'];
-                    
+                                        
+                    // TODO: DAPETIN PERIODE PENGECEKAN TAGIHAN TERAKHIR
+                
                     $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
                     $logName = $this->db->fetchAssoc($this->db->query($log));
                     if(!empty($logName)){
@@ -1632,7 +1652,7 @@ class StudentBE
 
                 $this->db->insert('user_class', $class_details);
 
-                // ! Update Bills
+                // TODO: UPDATE SISWA
 
                 $date = Call::splitDate();
                 $status = $this->status;
@@ -1640,16 +1660,18 @@ class StudentBE
 
                 $bindValues = array_merge($student_id, [$status['active'], $status['inactive']]);
                 $billStmt = $this->db->query(
-                    "SELECT
+                                "SELECT
                                     id, user_id, trx_detail, payment_due
                                 FROM bills
                                 WHERE
                                     user_id IN ($idPlaceholders) AND
                                     trx_status IN (?, ?)",
-                    $bindValues,
-                );
+                                $bindValues,
+                            );
                 $bills = $this->db->fetchAll($billStmt);
-
+                    
+                // TODO: UPDATING TAGIHAN ACTIVE DAN INACTIVE
+                
                 foreach ($bills as $bill) {
                     $detail = json_decode($bill['trx_detail'], true);
                     $day = Call::splitDate($bill['payment_due']);
