@@ -269,16 +269,21 @@ class JournalBE
             'section' => $_GET['section-filter'] ?? NULL_VALUE,
         ];
 
+        $semesterInt = $params['semester'] == FIRST_SEMESTER ? 1 : 2;
+
         $startSemester = Call::getFirstDay(
             [
                 'year' => $params['academic_year'],
-                'semester' => $params['semester'] == FIRST_SEMESTER ? 1 : 2,
+                'semester' => $semesterInt,
                 'month' => $params['semester'] == FIRST_SEMESTER ? '07' : '01',
             ],
             FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS,
         );
 
-        $modifyDate = new DateTime("11-$params[month]-$year");
+        $years = explode("/", $params['academic_year']);
+        $yearInt = $years[intval($semesterInt) - 1];
+
+        $modifyDate = new DateTime("11-$params[month]-$yearInt");
         if ((int) $splitDate['day'] <= 10 && $params['month'] != $month) {
             $modifyDate->modify('last day of this month');
         }
@@ -287,6 +292,11 @@ class JournalBE
         $dueDateParamMonth = $modifyDate->format(DATE_FORMAT);
         $firstDayMonth = $modifyDate->modify('first day of this month');
         $firstDayOfTheMonth = $firstDayMonth->format(DATE_FORMAT);
+
+        if(isset($_GET['month-filter'])){
+            $startSemester = "$yearInt-$params[month]-01";
+        }
+
         $startDateParams = array_merge($params, ['start_date' => $for_akt ? $firstDayOfTheMonth : $startSemester, 'end_date' => $endRange]);
         $dueDateParams = array_merge($params, ['start_date' => $for_akt ? $firstDayOfTheMonth : $startSemester, 'end_date' => $dueDateParamMonth]);
         $startDateResult = $this->getUnpaidTransaction($startDateParams);
@@ -365,7 +375,7 @@ class JournalBE
     }
 
     public function exportJournals($data, $filter)
-    {
+    {        
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
@@ -383,15 +393,12 @@ class JournalBE
             return FormatHelper::formatRupiah($amount);
         };
 
-        // Adjusted column widths slightly for better fit
-        $sheet->getColumnDimension('A')->setWidth(20); // Label for left block
-        $sheet->getColumnDimension('B')->setWidth(15); // Value for left block
-        $sheet->getColumnDimension('C')->setWidth(2);  // Spacer column
+        $sheet->getColumnDimension('A')->setWidth(30); 
+        $sheet->getColumnDimension('B')->setWidth(25); 
+        $sheet->getColumnDimension('C')->setWidth(2); 
 
-        $sheet->getColumnDimension('D')->setWidth(20); // Label for right block
-        $sheet->getColumnDimension('E')->setWidth(15); // Value for right block
-        // Column F is not explicitly sized, can be used as a far right spacer or for overflow if needed.
-
+        $sheet->getColumnDimension('D')->setWidth(30);
+        $sheet->getColumnDimension('E')->setWidth(25);
 
         $sheet->mergeCells('A1:E1');
         $sheet->setCellValue('A1', 'Data Penjurnalan');
@@ -406,7 +413,6 @@ class JournalBE
         $sheet->getRowDimension(2)->setRowHeight(18);
 
         $sheet->mergeCells('A3:E3');
-        // Apply border to the bottom of A3 to create the line
         $sheet->getStyle('A3:E3')->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THICK);
         $sheet->getStyle('A3:E3')->getBorders()->getBottom()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
 
@@ -418,7 +424,7 @@ class JournalBE
             'font' => ['bold' => true, 'size' => 10],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
             'borders' => [
-                'allBorders' => [ // This applies to all individual borders of the cell(s)
+                'allBorders' => [ 
                     'borderStyle' => Border::BORDER_THIN,
                     'color' => ['rgb' => '000000'],
                 ],
@@ -444,11 +450,35 @@ class JournalBE
         $currentRow++;
 
         $semesterText = '';
-        if (($filter['semester-filter'] ?? null) == 1) $semesterText = 'Ganjil';
-        elseif (($filter['semester-filter'] ?? null) == 2) $semesterText = 'Genap';
-        else $semesterText = (string)($filter['semester-filter'] ?? '');
-        $tahunAjaranText = $filter['year-filter'] ?? '';
-        $kelasText = '';
+        if (($filter['semester'] ?? null) == FIRST_SEMESTER) $semesterText = 'Ganjil';
+        elseif (($filter['semester'] ?? null) == SECOND_SEMESTER) $semesterText = 'Genap';
+        else $semesterText = (string)($filter['semester'] ?? '-');
+        $tahunAjaranText = $filter['academic_year'] ?? '-';
+        $class_list = [];
+
+        $query = "SELECT
+                    l.id AS level_id, l.name AS level_name, l.va_code AS va_prefix,
+                    g.id AS grade_id, g.level_id AS grade_level_id, g.name AS grade_name, g.base_monthly_fee AS grade_monthly, g.base_late_fee AS grade_late,
+                    s.id AS section_id, s.grade_id AS section_level_id, s.name AS section_name, s.base_monthly_fee AS section_monthly, s.base_late_fee AS section_late
+                  FROM
+                    levels l LEFT JOIN
+                    grades g ON l.id = g.level_id LEFT JOIN
+                    sections s ON g.id = s.grade_id";
+        $classResult = $this->db->fetchAll($this->db->query($query));
+
+        foreach ($classResult as $data) {
+            $class_list[$data['level_id']][$data['grade_id']][$data['section_id']] = [
+                'va_prefix' => $data['va_prefix'],
+                'level_name' => $data['level_name'],
+                'grade_name' => $data['grade_name'],
+                'section_name' => $data['section_name'],
+                'monthly_fee' => $data['grade_monthly'] != 0 ? $data['grade_monthly'] : $data['section_monthly'],
+                'late_fee' => $data['grade_late'] != 0 ? $data['grade_late'] : $data['section_monthly'],
+            ];
+        }  
+
+        $class = $class_list[$filter['level']][$filter['grade']][$filter['section']];
+        $kelasText = $class['level_name']." ". ($class['grade_name'] ?? null)." ". ($class['section_name'] ?? null);
 
         $sheet->mergeCells('A'.$currentRow.':A'.$currentRow)->setCellValue('A'.$currentRow, $semesterText);
         $sheet->mergeCells('B'.$currentRow.':C'.$currentRow)->setCellValue('B'.$currentRow, $tahunAjaranText);
@@ -459,12 +489,12 @@ class JournalBE
         $currentRow++;
 
         $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, 'Nama');
-        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($headerStyleArray); // Use array for merged cell
+        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($headerStyleArray); 
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
 
-        $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, '-');
-        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($cellStyleArray); // Use array for merged cell
+        $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, $filter['search'] ?? '-');
+        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($cellStyleArray); 
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
         $currentRow++;
@@ -481,13 +511,12 @@ class JournalBE
             $titleCellsRange = $labelCol.$startRow.':'.$valueCol.$startRow;
             $sheet->mergeCells($titleCellsRange);
             $sheet->setCellValue($labelCol.$startRow, $title);
-            $styleTitle = $sheet->getStyle($titleCellsRange); // Apply to the merged range
+            $styleTitle = $sheet->getStyle($titleCellsRange);
             $styleTitle->getFont()->setBold(true)->setSize(9);
             $styleTitle->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
             $styleTitle->getBorders()->getTop()->setBorderStyle(Border::BORDER_THIN);
             $styleTitle->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
             $styleTitle->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
-            // For merged cells, bottom border on title is not needed if rows below have top border
 
             $sheet->getRowDimension($startRow)->setRowHeight($rowHeightHeaderTables - 2);
             $row = $startRow + 1;
@@ -498,8 +527,8 @@ class JournalBE
             $styleL1->getFont()->setBold($isLabel1Bold)->setSize(9);
             $styleL1->getAlignment()->setHorizontal($label1Align)->setVertical(Alignment::VERTICAL_CENTER);
             $styleL1->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
-            $styleL1->getBorders()->getTop()->setBorderStyle(Border::BORDER_NONE); // No top border if title has bottom
-            $styleL1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_HAIR);
+            $styleL1->getBorders()->getTop()->setBorderStyle(Border::BORDER_HAIR);
+            $styleL1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
 
             $sheet->setCellValue($valueCol.$row, $formatCurrencyFunc($value1));
@@ -507,8 +536,8 @@ class JournalBE
             $styleV1->getFont()->setBold(false)->setSize(9);
             $styleV1->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT)->setVertical(Alignment::VERTICAL_CENTER);
             $styleV1->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
-            $styleV1->getBorders()->getTop()->setBorderStyle(Border::BORDER_NONE);
-            $styleV1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_HAIR);
+            $styleV1->getBorders()->getTop()->setBorderStyle(Border::BORDER_HAIR);
+            $styleV1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
 
             $sheet->getRowDimension($row)->setRowHeight($rowHeightHeaderTables - 2);
@@ -541,7 +570,7 @@ class JournalBE
             $sheet, 'A', 'B', $dataStartRow,
             'PENERBITAN UANG SEKOLAH',
             'PIUT UANG SEKOLAH', $data['per_first_day'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
-            'PENERIMAAN - UANG SEKOLAH', $data['per_first_day'] ?? 0, false, Alignment::HORIZONTAL_LEFT,
+            'PENERIMAAN - UANG SEKOLAH', $data['per_first_day'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
             $formatCurrency
         );
 
@@ -554,14 +583,13 @@ class JournalBE
         );
 
         $currentRow = max($nextRowLeft, $nextRowRight);
-        // Remove extra spacer, let tables stack if needed or adjust $rowHeightHeaderTables
-        // $currentRow++;
+        $currentRow++;
 
         $nextRowLeft = $drawJournalSubTable(
             $sheet, 'A', 'B', $currentRow,
             'PENERBITAN DENDA',
             'PIUT. DENDA', $data['late_fee_amount'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
-            'PENERIMAAN - UANG DENDA', $data['late_fee_amount'] ?? 0, false, Alignment::HORIZONTAL_LEFT,
+            'PENERIMAAN - UANG DENDA', $data['late_fee_amount'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
             $formatCurrency
         );
 

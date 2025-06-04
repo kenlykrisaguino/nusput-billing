@@ -732,6 +732,31 @@ class BillBE
         $fee_category_subquery_query = !empty($fee_category_subquery_list) ? ', ' . implode(', ', $fee_category_subquery_list) : '';
         $fee_category_group_by_query = !empty($fee_category_aliases_list) ? ', ' . implode(', ', $fee_category_aliases_list) : '';
 
+        $currentUserClassSubquery = "SELECT
+                uc_main.id,
+                uc_main.user_id,
+                uc_main.virtual_account,
+                uc_main.monthly_fee,
+                uc_main.level_id,
+                uc_main.grade_id,
+                uc_main.section_id
+            FROM user_class uc_main
+            INNER JOIN (
+                SELECT
+                    inn_uc.user_id,
+                    MAX(inn_uc.id) AS max_user_class_id 
+                FROM user_class inn_uc
+                INNER JOIN (
+                    SELECT
+                        most_inn_uc.user_id,
+                        MAX(most_inn_uc.grade_id) AS max_grade 
+                    FROM user_class most_inn_uc
+                    GROUP BY most_inn_uc.user_id
+                ) max_grade_details ON inn_uc.user_id = max_grade_details.user_id AND inn_uc.grade_id = max_grade_details.max_grade
+                GROUP BY inn_uc.user_id, inn_uc.grade_id
+            ) latest_class_ids ON uc_main.id = latest_class_ids.max_user_class_id
+        ";
+
         $query = "SELECT
                     c.virtual_account AS va,
                     u.nis AS nis,
@@ -741,34 +766,27 @@ class BillBE
                     COALESCE(s.name, '-') AS section,
                     c.monthly_fee,
                     MAX(CONCAT(YEAR(b.payment_due), '/', LPAD(MONTH(b.payment_due), 2, '0'))) AS payment_due,
-                    COUNT(CASE WHEN b.trx_status = '$status[unpaid]' THEN 1 ELSE NULL END) AS late_count,
-                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS late_fee,
-                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]', '$status[active]') THEN b.trx_amount ELSE 0 END) + SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS payable,
+                    COUNT(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN 1 ELSE NULL END) AS late_count,
+                    SUM(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN b.late_fee ELSE 0 END) AS late_fee,
+                    SUM(CASE WHEN b.trx_status IN ('{$status['unpaid']}', '{$status['active']}') THEN b.trx_amount ELSE 0 END) + SUM(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN b.late_fee ELSE 0 END) AS payable,
                     ub.unpaid_bill_details
                     $fee_category_select_query
                 FROM
-                    bills b JOIN
-                    users u ON b.user_id = u.id JOIN
-                    (
-                        SELECT
-                            uc_inner.user_id, MAX(uc_inner.section_id) AS max_section_id
-                        FROM
-                            user_class uc_inner
-                        GROUP BY uc_inner.user_id
-                    ) mc ON u.id = mc.user_id JOIN
-                    user_class c ON u.id = c.user_id AND mc.max_section_id = c.section_id JOIN
-                    levels l ON c.level_id = l.id JOIN
-                    grades g ON c.grade_id = g.id JOIN
-                    sections s ON c.section_id = s.id LEFT JOIN
-                    (
+                    bills b
+                    LEFT JOIN users u ON b.user_id = u.id
+                    LEFT JOIN ($currentUserClassSubquery) c ON u.id = c.user_id 
+                    LEFT JOIN levels l ON c.level_id = l.id
+                    LEFT JOIN grades g ON c.grade_id = g.id
+                    LEFT JOIN sections s ON c.section_id = s.id 
+                    LEFT JOIN (
                         SELECT
                             uaf_sub.user_id
                             $fee_category_subquery_query
                         FROM
                             user_additional_fee uaf_sub
                         GROUP BY uaf_sub.user_id
-                    ) uaf_agg ON u.id = uaf_agg.user_id LEFT JOIN
-                    (
+                    ) uaf_agg ON u.id = uaf_agg.user_id
+                    LEFT JOIN (
                         SELECT
                             b2.user_id,
                             JSON_ARRAYAGG(
@@ -780,30 +798,32 @@ class BillBE
                                 )
                             ) AS unpaid_bill_details
                         FROM bills b2
-                        WHERE b2.trx_status IN ('$status[unpaid]', '$status[active]')
+                        WHERE b2.trx_status IN ('{$status['unpaid']}', '{$status['active']}')
                         GROUP BY b2.user_id
                     ) ub ON ub.user_id = u.id
                 WHERE
-                    b.trx_status IN ('$status[unpaid]', '$status[active]')
-                    AND b.user_id = u.id
+                    b.trx_status IN ('{$status['unpaid']}', '{$status['active']}')
                 GROUP BY
                     c.virtual_account, u.nis, u.name,
-                    l.name,
-                    g.name,
-                    s.name,
+                    l.name, 
+                    g.name, 
+                    s.name, 
                     c.monthly_fee,
-                    l.id,
-                    g.id,
-                    s.id,
+                    c.user_id, 
+                    c.level_id,
+                    c.grade_id,
+                    c.section_id,
                     ub.unpaid_bill_details
                     $fee_category_group_by_query
                 ORDER BY
-                    s.id, c.virtual_account";
+                    c.level_id, c.grade_id, c.section_id, c.virtual_account";
 
         $result = $this->db->fetchAll($this->db->query($query));
+
         $startRow = 2;
         $max_late = 0;
         $data = [];
+        $total = 0;
 
         foreach ($result as $index => $row) {
             $max_late = $max_late = max($max_late, $row['late_count']);
@@ -840,7 +860,15 @@ class BillBE
             $data[$index][] = FormatHelper::formatRupiah($row['payable']);
             $data[$index][] = '-';
             $data[$index][] = FormatHelper::formatRupiah($row['payable']);
+            $total += $row['payable'];
         }
+        $rowLength = count($data["0"]);
+        for($i = 0; $i < $rowLength - 2; $i++){
+            $data[count($result)][] = "";
+        }
+        $data[count($result)][] = "Grand Total";
+        $data[count($result)][] = FormatHelper::formatRupiah($total);
+        
 
         $spreadsheet = $this->getBillFormat($max_late);
 

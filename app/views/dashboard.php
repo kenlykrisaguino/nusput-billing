@@ -1,5 +1,6 @@
 <?php
 
+use App\Helpers\Call;
 use App\Helpers\FormatHelper;
 
 $data = $this->studentBE->studentPage();
@@ -71,7 +72,7 @@ endif;?>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Pembayaran Terakhir</div>
-        <div class="text-lg text-slate-800 font-medium"><?= $dashboard['last_payment'] ?? '-' ?></div>
+        <div class="text-lg text-slate-800 font-medium"><?= Call::date($dashboard['last_payment']) ?? '-' ?></div>
     </div>
     <div>
         <div class="text-xs text-blue-500 font-bold uppercase">Total Tagihan</div>

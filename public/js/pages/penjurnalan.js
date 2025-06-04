@@ -9,17 +9,11 @@ async function getClassesData(level = "", grade = "", section = "") {
     section: sectionParam,
   });
   const url = `/api/filter-classes?${params.toString()}`;
-  console.log("Fetching:", url);
   try {
     const response = await fetch(url, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
-    console.log(
-      `Response Status for ${url}:`,
-      response.status,
-      response.statusText
-    );
     if (!response.ok) {
       let errorBody = `Status: ${response.status} ${response.statusText}`;
       try {
@@ -39,7 +33,6 @@ async function getClassesData(level = "", grade = "", section = "") {
       throw new Error(`Expected JSON response, but received ${contentType}`);
     }
     const result = await response.json();
-    console.log(`Data received from ${url}:`, result);
     if (!result || !result.success) {
       console.error(
         `API Error from ${url}:`,
@@ -59,38 +52,48 @@ function populateDropdown(
   options,
   defaultOptionText,
   keepDefault = false,
-  defaultValue = ""
+  defaultOptionValue = "",
+  doSort = true,
+  selectedValue = null
 ) {
-  const defaultOption =
-    keepDefault && selectElement.options[0] ? selectElement.options[0] : null;
+  const firstOptionBeforeClear =
+    keepDefault && selectElement.options[0]
+      ? selectElement.options[0].cloneNode(true)
+      : null;
+
   selectElement.innerHTML = "";
-  let hasDefault = false;
-  if (defaultOption) {
-    selectElement.appendChild(defaultOption);
-    defaultOption.value = defaultValue;
-    defaultOption.selected = true;
-    defaultOption.disabled = true;
-    defaultOption.textContent = defaultOptionText;
-    hasDefault = true;
+  let hasDefaultPlaceholder = false;
+
+  if (firstOptionBeforeClear) {
+    selectElement.appendChild(firstOptionBeforeClear);
+    firstOptionBeforeClear.value = defaultOptionValue;
+    firstOptionBeforeClear.textContent = defaultOptionText;
+    firstOptionBeforeClear.disabled = true;
+    firstOptionBeforeClear.selected = true;
+    hasDefaultPlaceholder = true;
   } else if (defaultOptionText) {
-    const firstOption = document.createElement("option");
-    firstOption.textContent = defaultOptionText;
-    firstOption.value = defaultValue;
-    firstOption.selected = true;
-    firstOption.disabled = true;
-    selectElement.appendChild(firstOption);
-    hasDefault = true;
+    const placeholderOption = document.createElement("option");
+    placeholderOption.textContent = defaultOptionText;
+    placeholderOption.value = defaultOptionValue;
+    placeholderOption.selected = true;
+    placeholderOption.disabled = true;
+    selectElement.appendChild(placeholderOption);
+    hasDefaultPlaceholder = true;
   }
+
   if (options && options.length > 0) {
-    try {
-      options.sort((a, b) => {
-        const textA = typeof a === "object" ? a.text || "" : a;
-        const textB = typeof b === "object" ? b.text || "" : b;
-        return String(textA).localeCompare(String(textB));
-      });
-    } catch (e) {
-      console.warn("Could not sort options:", options, e);
+    if (doSort) {
+      try {
+        options.sort((a, b) => {
+          const textA = typeof a === "object" ? a.text || "" : String(a);
+          const textB = typeof b === "object" ? b.text || "" : String(b);
+          return String(textA).localeCompare(String(textB));
+        });
+      } catch (e) {
+        console.warn("Could not sort options:", options, e);
+      }
     }
+
     options.forEach((opt) => {
       const optionElement = document.createElement("option");
       if (typeof opt === "object" && opt !== null && opt.value !== undefined) {
@@ -103,65 +106,126 @@ function populateDropdown(
       }
       selectElement.appendChild(optionElement);
     });
-    selectElement.disabled = false;
+  }
+
+  if (selectedValue !== null) {
+    const LCaseSelectedValue = String(selectedValue).toLowerCase();
+    const optionToSelect = Array.from(selectElement.options).find(
+      (opt) => String(opt.value).toLowerCase() === LCaseSelectedValue
+    );
+    if (optionToSelect) {
+      selectElement.value = optionToSelect.value;
+    } else if (hasDefaultPlaceholder) {
+      selectElement.selectedIndex = 0;
+    }
+  } else if (hasDefaultPlaceholder) {
+    selectElement.selectedIndex = 0;
+  }
+
+  if (options.length === 0) {
+    selectElement.disabled = hasDefaultPlaceholder;
   } else {
-    selectElement.disabled = hasDefault && options.length === 0;
+    selectElement.disabled = false;
   }
 }
 
 function resetAndDisableDropdown(
   selectElement,
   defaultOptionText,
-  useDefaultText = "-- Tidak Ada Kelas --"
+  useNoClassText = "-- Tidak Ada Kelas --",
+  selectedValue = null
 ) {
+  if (!selectElement) return;
+  let placeholderText = defaultOptionText;
   if (
     selectElement.name === "edit-section" ||
-    selectElement.name === "section"
+    selectElement.name === "section" ||
+    selectElement.name === "section-filter"
   ) {
-    populateDropdown(selectElement, [], useDefaultText, true, "");
-  } else {
-    populateDropdown(selectElement, [], defaultOptionText, true, "");
+    placeholderText = useNoClassText;
   }
+  populateDropdown(
+    selectElement,
+    [],
+    placeholderText,
+    true,
+    "",
+    true,
+    selectedValue
+  );
   selectElement.disabled = true;
 }
 
-async function populateLevels(selectElement, gradeElement, sectionElement) {
+async function populateLevels(
+  selectElement,
+  gradeElement,
+  sectionElement,
+  selectedLevelValue = null
+) {
   if (!selectElement) return;
-  resetAndDisableDropdown(selectElement, "Memuat Jenjang...");
-  if (gradeElement) resetAndDisableDropdown(gradeElement, "Pilih Tingkat");
-  if (sectionElement)
-    resetAndDisableDropdown(
-      sectionElement,
-      "Pilih Kelas",
-      "-- Tidak Ada Kelas --"
-    );
+  populateDropdown(
+    selectElement,
+    [],
+    "Memuat Jenjang...",
+    true,
+    "",
+    true,
+    null
+  );
+  selectElement.disabled = true;
+
+  resetAndDisableDropdown(gradeElement, "Pilih Tingkat");
+  resetAndDisableDropdown(
+    sectionElement,
+    "Pilih Kelas",
+    "-- Tidak Ada Kelas --"
+  );
+
   try {
     const responseData = await getClassesData();
     const levelOptions = responseData.levels.map((level) => ({
       value: level.id,
       text: level.name,
     }));
-    populateDropdown(selectElement, levelOptions, "Pilih Jenjang");
+    populateDropdown(
+      selectElement,
+      levelOptions,
+      "Pilih Jenjang",
+      true,
+      "",
+      true,
+      selectedLevelValue
+    );
   } catch (error) {
     console.error("Failed to populate levels:", error);
-    populateDropdown(selectElement, [], "Gagal Memuat Jenjang", true);
+    populateDropdown(
+      selectElement,
+      [],
+      "Gagal Memuat Jenjang",
+      true,
+      "",
+      true,
+      selectedLevelValue
+    );
+    selectElement.disabled = true;
   }
 }
 
 async function populateGrades(
   selectedLevelId,
-  levelElement,
   gradeElement,
-  sectionElement
+  sectionElement,
+  selectedGradeValue = null
 ) {
   if (!gradeElement) return;
-  resetAndDisableDropdown(gradeElement, "Memuat Tingkat...");
-  if (sectionElement)
-    resetAndDisableDropdown(
-      sectionElement,
-      "Pilih Kelas",
-      "-- Tidak Ada Kelas --"
-    );
+  populateDropdown(gradeElement, [], "Memuat Tingkat...", true, "", true, null);
+  gradeElement.disabled = true;
+  resetAndDisableDropdown(
+    sectionElement,
+    "Pilih Kelas",
+    "-- Tidak Ada Kelas --"
+  );
+
   if (!selectedLevelId) {
     resetAndDisableDropdown(gradeElement, "Pilih Tingkat");
     return;
@@ -172,24 +236,43 @@ async function populateGrades(
       value: grade.id,
       text: grade.name,
     }));
-    populateDropdown(gradeElement, gradeOptions, "Pilih Tingkat");
+    populateDropdown(
+      gradeElement,
+      gradeOptions,
+      "Pilih Tingkat",
+      true,
+      "",
+      true,
+      selectedGradeValue
+    );
   } catch (error) {
     console.error(
       `Failed to populate grades for level ID ${selectedLevelId}:`,
       error
     );
-    populateDropdown(gradeElement, [], "Gagal Memuat Tingkat", true);
+    populateDropdown(
+      gradeElement,
+      [],
+      "Gagal Memuat Tingkat",
+      true,
+      "",
+      true,
+      selectedGradeValue
+    );
+    gradeElement.disabled = true;
   }
 }
 
 async function populateSections(
   selectedLevelId,
   selectedGradeId,
-  gradeElement,
-  sectionElement
+  sectionElement,
+  selectedSectionValue = null
 ) {
   if (!sectionElement) return;
-  resetAndDisableDropdown(sectionElement, "Memuat Kelas...");
+  populateDropdown(sectionElement, [], "Memuat Kelas...", true, "", true, null);
+  sectionElement.disabled = true;
+
   if (!selectedLevelId || !selectedGradeId) {
     resetAndDisableDropdown(
       sectionElement,
@@ -204,83 +287,218 @@ async function populateSections(
       value: section.id,
       text: section.name,
     }));
-    populateDropdown(sectionElement, sectionOptions, "-- Tidak Ada Kelas --");
+    const defaultText =
+      sectionOptions.length > 0 ? "Pilih Kelas" : "-- Tidak Ada Kelas --";
+    populateDropdown(
+      sectionElement,
+      sectionOptions,
+      defaultText,
+      true,
+      "",
+      true,
+      selectedSectionValue
+    );
   } catch (error) {
     console.error(
       `Failed to populate sections for ${selectedLevelId}-${selectedGradeId}:`,
       error
     );
-    populateDropdown(sectionElement, [], "Gagal Memuat Kelas", true);
+    populateDropdown(
+      sectionElement,
+      [],
+      "Gagal Memuat Kelas",
+      true,
+      "",
+      true,
+      selectedSectionValue
+    );
+    sectionElement.disabled = true;
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+const ALL_MONTHS = [
+  { value: 1, text: "Januari" },
+  { value: 2, text: "Februari" },
+  { value: 3, text: "Maret" },
+  { value: 4, text: "April" },
+  { value: 5, text: "Mei" },
+  { value: 6, text: "Juni" },
+  { value: 7, text: "Juli" },
+  { value: 8, text: "Agustus" },
+  { value: 9, text: "September" },
+  { value: 10, text: "Oktober" },
+  { value: 11, text: "November" },
+  { value: 12, text: "Desember" },
+];
+
+function updateMonthOptions(
+  semesterSelect,
+  monthSelect,
+  selectedMonthValue = null
+) {
+  if (!monthSelect || !semesterSelect) return;
+  const selectedSemester = semesterSelect.value;
+  let M_options = [];
+
+  if (selectedSemester === "GENAP") {
+    M_options = ALL_MONTHS.filter((m) => m.value >= 1 && m.value <= 6);
+  } else if (selectedSemester === "GASAL") {
+    M_options = ALL_MONTHS.filter((m) => m.value >= 7 && m.value <= 12);
+  } else {
+    M_options = [];
+  }
+  populateDropdown(
+    monthSelect,
+    M_options,
+    "Pilih Bulan",
+    true,
+    "",
+    false,
+    selectedMonthValue
+  );
+  monthSelect.disabled = M_options.length === 0;
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("DOM Loaded! Initializing script...");
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialLevel = urlParams.get("level-filter") || null;
+  const initialGrade = urlParams.get("grade-filter") || null;
+  const initialSection = urlParams.get("section-filter") || null;
+  const initialYear = urlParams.get("year-filter") || null;
+  const initialSemester = urlParams.get("semester-filter")
+    ? urlParams.get("semester-filter").toUpperCase()
+    : null;
+  const initialMonth = urlParams.get("month-filter") || null;
+
   const levelSelectFilter = document.querySelector("#level-filter");
   const gradeSelectFilter = document.querySelector("#grade-filter");
   const sectionSelectFilter = document.querySelector("#section-filter");
-
-  if (levelSelectFilter && gradeSelectFilter && sectionSelectFilter) {
-    populateLevels(levelSelectFilter, gradeSelectFilter, sectionSelectFilter);
-    levelSelectFilter.addEventListener("change", (event) => {
-      populateGrades(
-        event.target.value,
-        levelSelectFilter,
-        gradeSelectFilter,
-        sectionSelectFilter
-      );
-    });
-    gradeSelectFilter.addEventListener("change", (event) => {
-      const selectedLevelId = levelSelectFilter.value;
-      populateSections(
-        selectedLevelId,
-        event.target.value,
-        gradeSelectFilter,
-        sectionSelectFilter
-      );
-    });
-  }
   const yearSelect = document.querySelector("#year-filter");
   const semesterSelect = document.querySelector("#semester-filter");
   const monthSelect = document.querySelector("#month-filter");
   const searchInput = document.querySelector("#search");
   const exportButton = document.querySelector("#export-btn");
-  const currentYear = new Date().getFullYear();
-  const yearOptions = [];
-  for (let y = currentYear + 1; y >= currentYear - 5; y--) {
-    yearOptions.push({ value: `${y}/${y + 1}`, text: `${y}/${y + 1}` });
+  const resetButton = document.querySelector("#reset-filter");
+
+  if (levelSelectFilter && gradeSelectFilter && sectionSelectFilter) {
+    await populateLevels(
+      levelSelectFilter,
+      gradeSelectFilter,
+      sectionSelectFilter,
+      initialLevel
+    );
+    if (initialLevel && levelSelectFilter.value === initialLevel) {
+      await populateGrades(
+        initialLevel,
+        gradeSelectFilter,
+        sectionSelectFilter,
+        initialGrade
+      );
+      if (initialGrade && gradeSelectFilter.value === initialGrade) {
+        await populateSections(
+          initialLevel,
+          initialGrade,
+          sectionSelectFilter,
+          initialSection
+        );
+      }
+    }
+  } else {
+    if (levelSelectFilter)
+      populateDropdown(
+        levelSelectFilter,
+        [],
+        "Pilih Jenjang",
+        true,
+        "",
+        true,
+        initialLevel
+      );
+    if (gradeSelectFilter)
+      resetAndDisableDropdown(gradeSelectFilter, "Pilih Tingkat");
+    if (sectionSelectFilter)
+      resetAndDisableDropdown(
+        sectionSelectFilter,
+        "Pilih Kelas",
+        "-- Tidak Ada Kelas --"
+      );
   }
-  populateDropdown(yearSelect, yearOptions, "Pilih Tahun", true);
 
-  populateDropdown(
-    semesterSelect,
-    [
-      { value: 1, text: "Ganjil" },
-      { value: 2, text: "Genap" },
-    ],
-    "Pilih Semester",
-    true
-  );
+  if (yearSelect) {
+    const currentYear = new Date().getFullYear();
+    const yearOptions = [];
+    for (let y = currentYear + 1; y >= currentYear - 5; y--) {
+      yearOptions.push({ value: `${y}/${y + 1}`, text: `${y}/${y + 1}` });
+    }
+    populateDropdown(
+      yearSelect,
+      yearOptions,
+      "Pilih Tahun",
+      true,
+      "",
+      true,
+      initialYear
+    );
+  }
 
-  populateDropdown(
-    monthSelect,
-    [
-      { value: 1, text: "Januari" },
-      { value: 2, text: "Februari" },
-      { value: 3, text: "Maret" },
-      { value: 4, text: "April" },
-      { value: 5, text: "Mei" },
-      { value: 6, text: "Juni" },
-      { value: 7, text: "Juli" },
-      { value: 8, text: "Agustus" },
-      { value: 9, text: "September" },
-      { value: 10, text: "Oktober" },
-      { value: 11, text: "November" },
-      { value: 12, text: "Desember" },
-    ],
-    "Pilih Bulan",
-    true
-  );
+  if (semesterSelect) {
+    populateDropdown(
+      semesterSelect,
+      [
+        { value: "GASAL", text: "Gasal" },
+        { value: "GENAP", text: "Genap" },
+      ],
+      "Pilih Semester",
+      true,
+      "",
+      true,
+      initialSemester
+    );
+  }
+
+  if (monthSelect && semesterSelect) {
+    updateMonthOptions(semesterSelect, monthSelect, initialMonth);
+  }
+
+  if (levelSelectFilter) {
+    levelSelectFilter.addEventListener("change", async (event) => {
+      await populateGrades(
+        event.target.value,
+        gradeSelectFilter,
+        sectionSelectFilter
+      );
+      resetAndDisableDropdown(
+        sectionSelectFilter,
+        "Pilih Kelas",
+        "-- Tidak Ada Kelas --"
+      );
+    });
+  }
+
+  if (gradeSelectFilter) {
+    gradeSelectFilter.addEventListener("change", async (event) => {
+      const selectedLevelId = levelSelectFilter
+        ? levelSelectFilter.value
+        : null;
+      await populateSections(
+        selectedLevelId,
+        event.target.value,
+        sectionSelectFilter
+      );
+    });
+  }
+
+  if (semesterSelect && monthSelect) {
+    semesterSelect.addEventListener("change", () => {
+      updateMonthOptions(semesterSelect, monthSelect);
+    });
+  }
+
+  if (searchInput && urlParams.has("search")) {
+    searchInput.value = urlParams.get("search");
+  }
 
   if (exportButton) {
     exportButton.addEventListener("click", () => {
@@ -309,7 +527,82 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const exportUrl = `/exports/journals?${params.toString()}`;
       console.log("Exporting with URL:", exportUrl);
-      window.location.href = exportUrl; 
+      window.location.href = exportUrl;
+    });
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener("click", async () => {
+      console.log("Resetting filters...");
+
+      if (levelSelectFilter) {
+        await populateLevels(
+          levelSelectFilter,
+          gradeSelectFilter,
+          sectionSelectFilter,
+          null
+        );
+      } else {
+        if (gradeSelectFilter)
+          resetAndDisableDropdown(gradeSelectFilter, "Pilih Tingkat");
+        if (sectionSelectFilter)
+          resetAndDisableDropdown(
+            sectionSelectFilter,
+            "Pilih Kelas",
+            "-- Tidak Ada Kelas --"
+          );
+      }
+
+      if (yearSelect) {
+        const currentYear = new Date().getFullYear();
+        const yearOptions = [];
+        for (let y = currentYear + 1; y >= currentYear - 5; y--) {
+          yearOptions.push({ value: `${y}/${y + 1}`, text: `${y}/${y + 1}` });
+        }
+        populateDropdown(
+          yearSelect,
+          yearOptions,
+          "Pilih Tahun",
+          true,
+          "",
+          true,
+          null
+        );
+      }
+
+      if (semesterSelect) {
+        populateDropdown(
+          semesterSelect,
+          [
+            { value: "GASAL", text: "Gasal" },
+            { value: "GENAP", text: "Genap" },
+          ],
+          "Pilih Semester",
+          true,
+          "",
+          true,
+          null
+        );
+      }
+
+      if (monthSelect && semesterSelect) {
+        updateMonthOptions(semesterSelect, monthSelect, null);
+      }
+
+      if (searchInput) {
+        searchInput.value = "";
+      }
+
+      if (window.history.replaceState) {
+        const cleanUrl =
+          window.location.protocol +
+          "//" +
+          window.location.host +
+          window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
+      }
+
+      console.log("Filters have been reset.");
     });
   }
 });
