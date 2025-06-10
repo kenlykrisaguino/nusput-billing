@@ -1,7 +1,11 @@
-<div id="edit-tariff-modal" 
-     class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-[100]"
-     x-data="editTariffModal()"
-     @open-edit-tariff-modal.window="openModal($event.detail.tariffId)">
+<div id="edit-tariff-modal"
+     x-data="editTariffModal"
+     x-show="show"
+     @open-edit-tariff-modal.window="openModal($event.detail.tariffId)"
+     @keydown.escape.window="closeModal()"
+     style="display: none;"
+     x-transition.opacity
+     class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-[100]">
      
     <div class="relative top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 py-6 px-8 border w-11/12 md:w-1/2 lg:w-1/3 max-w-lg shadow-xl rounded-lg bg-white">
         
@@ -74,13 +78,17 @@
 <script>
     function editTariffModal() {
         return {
+            show: false, 
+            
             formData: {},
             lists: { jenjang: [], tingkat: [], kelas: [] },
             isSaving: false,
             isLoading: true,
 
             async openModal(tariffId) {
-                document.getElementById('edit-tariff-modal').classList.remove('hidden');
+                if(!tariffId) return;
+
+                this.show = true; 
                 this.isLoading = true;
 
                 try {
@@ -106,9 +114,11 @@
                     this.isLoading = false;
                 }
             },
+
             closeModal() {
-                document.getElementById('edit-tariff-modal').classList.add('hidden');
+                this.show = false; 
             },
+
             async fetchTingkat(isInitialLoad = false) {
                 if (!isInitialLoad) this.formData.tingkat_id = '';
                 this.lists.tingkat = [];
@@ -116,6 +126,7 @@
                 const response = await window.api.get(`/tingkat?jenjang_id=${this.formData.jenjang_id}`);
                 if (response.data.success) this.lists.tingkat = response.data.data;
             },
+
             async fetchKelas(isInitialLoad = false) {
                 if (!isInitialLoad) this.formData.kelas_id = '';
                 this.lists.kelas = [];
@@ -123,6 +134,7 @@
                 const response = await window.api.get(`/kelas?tingkat_id=${this.formData.tingkat_id}`);
                 if (response.data.success) this.lists.kelas = response.data.data;
             },
+
             async saveTariff() {
                 if (this.isSaving) return;
                 this.isSaving = true;
@@ -135,7 +147,11 @@
                     if (response.data.success) {
                         window.showToast('Tarif berhasil diupdate.', 'success');
                         this.closeModal();
-                        window.location.reload(); 
+                        if (window.pages && typeof window.pages.students.loadClassesData === 'function') {
+                            window.pages.students.loadClassesData();
+                        } else {
+                            window.location.reload(); 
+                        }
                     }
                 } catch (error) {
                     console.error('Gagal update tarif:', error);

@@ -221,8 +221,8 @@
                                     class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
                                     <td class="px-4 py-2 flex gap-2 items-center">
                                         <button type="button"
+                                            x-on:click="$dispatch('open-edit-tariff-modal', { tariffId: '<?= htmlspecialchars($class['id'] ?? '') ?>' })"
                                             class="text-sky-600 hover:text-sky-800 cursor-pointer edit-tariff-btn"
-                                            onclick="window.dispatchEvent(new CustomEvent('open-edit-tariff-modal', { detail: { tariffId: <?= htmlspecialchars($tariff['id'] ?? 0) ?> } }))"
                                             title="Edit Tarif">
                                             <i class="ti ti-pencil"></i>
                                         </button>
