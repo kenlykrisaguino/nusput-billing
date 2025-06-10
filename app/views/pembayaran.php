@@ -1,132 +1,106 @@
-<div class="w-full">
-    <form action="" method="get" class="flex justify-between w-full mb-2">
-        <h1 class="text-lg font-semibold text-slate-800">Pembayaran</h1>
-        <div class="flex gap-2">
-            <div class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold" onclick="document.getElementById('import-payment').classList.remove('hidden')">Import Pembayaran</div>
-            <div>
-                <label for="search" class="mb-2 text-xs font-medium text-blue-900 sr-only">Search</label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                        <svg class="w-2 h-2 text-blue-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
-                        </svg>
-                    </div>
-                    <input type="search" id="search" name="search" value="<?= $_GET['search'] ?? '' ?>" class="block w-full px-2 py-1 ps-7 text-xs rounded-md text-blue-900 border border-blue-700 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Search Payment" />
-                    <button type="submit" class="text-white absolute end-0.5 bottom-0.5 bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-md text-xs px-2 py-1">Search</button>
-                </div>
-            </div>
-            <div onclick="document.getElementById('filter-payment').classList.remove('hidden')" class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">Filter</div>
-            <div id="filter-payment" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-                <div class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
-                    <h3 class="text-sm font-bold mb-2 text-slate-700">Filter Pembayaran</h3>
-    
-                    <div class="mb-2">
-                        <label for="year-filter" class="text-xs font-semibold uppercase">tahun ajaran</label>
-                        <select name="year-filter" id="year-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Tahun Ajaran</option>
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <label for="month-filter" class="text-xs font-semibold uppercase">bulan</label>
-                        <select name="month-filter" id="month-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Bulan</option>
-                        </select>
-                    </div>
-
-                    <button type="submit"
-                        class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                        Filter
-                    </button>
-    
-                    <button onclick="closeModal('filter-payment')" type="button"
-                        class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                        Batal
-                    </button>
-                </div>
+<div class="w-1/6 bg-sky-600 flex-shrink-0 p-4">
+    <h3 class="text-white font-semibold mb-6">Quick Access</h3>
+    <div class="flex flex-col gap-2 text-slate-50">
+        <div class="flex gap-2 items-center mb-2">
+            <h4 class="text-xs uppercase">payments</h4>
+            <div class="flex-1">
+                <hr class="text-white">
             </div>
         </div>
-    </form>
-    
-    <hr class="mb-2">
-
-    <div id="import-payment" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-        <form id="import-payment-form" method="post"
-            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
-            <h3 class="text-sm font-bold mb-2 text-slate-700">Import Pembayaran</h3>
-
-            <div class="pb-2">
-                <label for="bulk-payments" class="mb-1 block text-xs font-medium text-slate-700">Upload file</label>
-                <input name="bulk-payments" id="bulk-payments" type="file"
-                    class="mt-2 block w-full text-xs file:mr-4 file:rounded-md file:border-0 file:bg-blue-500 file:py-1 file:px-2 file:text-xs file:font-medium file:text-white hover:file:bg-blue-700 focus:outline-none disabled:pointer-events-none disabled:opacity-60" />
-                <small class="text-slate-400 text-xs italic">Format Excel Import Pembayaran dapat diunduh <a
-                        class="text-blue-400 hover:text-blue-500" href="/format?type=payment">disini</a></small>
-            </div>
-
-            <button onclick="importPaymentXLSX(this)" type="submit"
-                class="mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                Import
-            </button>
-
-            <button onclick="closeModal('import-payment')" type="button"
-                class="mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                Batal
-            </button>
-            
-
-        </form>
-
-    </div>
-
-    
-    <?php
-
-    use App\Helpers\FormatHelper;
-    use App\Helpers\Call;
-
-    $transactions = $this->paymentBE->getPayments();
-    ?>
-    <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
-        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                <tr>
-                    <th scope="col" class="px-6 py-3">
-                        Nama
-                    </th>
-                    <th scope="col" class="px-6 py-3">
-                        Transaksi
-                    </th>
-                    <th scope="col" class="px-6 py-3">
-                        Waktu
-                    </th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (count($transactions) > 0) : ?>
-                    <?php foreach($transactions as $trx) :?>
-                    <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
-                        <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap flex flex-col gap-2">
-                            <div><?= $trx['payment'] ?></div>
-                            <div class="text-xs text-blue-600"><?= $trx['virtual_account'] ?></div>
-                        </th>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <?= FormatHelper::formatRupiah($trx['trx_amount']) ?>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <?= $trx['trx_timestamp'] ?>
-                        </td>
-                    </tr>
-                    <?php endforeach;?>
-                <?php else :?>
-                    <tr>
-                        <td class="px-6 py-4 text-center" colspan="9">
-                            Data transaksi kosong.
-                        </td>
-                    </tr>
-                <?php endif;?>
-            </tbody>
-        </table>
+        <div onclick="document.getElementById('create-student').classList.remove('hidden')"
+            class="cursor-pointer hover:text-slate-200 hover:translate-x-2 transition-colors">
+        </div>
     </div>
 </div>
+<div class="w-5/6 px-10 py-6 overflow-y-auto">
+    <section id="payments">
+        <h3 class="font-semibold">Payments</h3>
+        <div class="bg-slate-50 p-4 rounded-xl mt-2 relative overflow-x-auto shadow-md sm:rounded-lg">
+                <table id="trx-table" class="w-full text-sm text-left rtl:text-right text-gray-500">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2">
+                                <span class="flex items-center font-medium text-sm">
+                                    Name
+                                    <svg class="w-4 h-4 ms-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"
+                                        width="24" height="24" fill="none" viewBox="0 0 24 24">
+                                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                                            stroke-width="2" d="m8 15 4 4 4-4m0-6-4-4-4 4" />
+                                    </svg>
+                                </span>
+                            </th>
+                            <th class="px-4 py-2">
+                                <span class="flex items-center font-medium text-sm">
+                                    Transaction
+                                    <svg class="w-4 h-4 ms-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"
+                                        width="24" height="24" fill="none" viewBox="0 0 24 24">
+                                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                                            stroke-width="2" d="m8 15 4 4 4-4m0-6-4-4-4 4" />
+                                    </svg>
+                                </span>
+                            </th>
+                            <th class="px-4 py-2">
+                                <span class="flex items-center font-medium text-sm">
+                                    Timestamps
+                                    <svg class="w-4 h-4 ms-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"
+                                        width="24" height="24" fill="none" viewBox="0 0 24 24">
+                                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                                            stroke-width="2" d="m8 15 4 4 4-4m0-6-4-4-4 4" />
+                                    </svg>
+                                </span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+    
+                            use App\Helpers\FormatHelper;
+                            use App\Helpers\Call;
+                            
+                            $transactions = $this->paymentBE->getPayments();
+                        ?>
+                        <?php if (count($transactions) > 0) : ?>
+                        <?php foreach($transactions as $trx) :?>
+                        <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
+                            <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                                <?= htmlspecialchars($trx['payment']) ?>
+                                <div class="text-xs text-blue-500"><?= htmlspecialchars($trx['virtual_account']) ?></div>
+                            </th>
+                            <td class="px-4 py-2 whitespace-nowrap">
+                                <?= FormatHelper::formatRupiah($trx['trx_amount']) ?>
+                            </td>
+                            <td class="px-6 py-4">
+                                <?= $trx['trx_timestamp']  ?>
+                            </td>
+                        </tr>
+                        <?php endforeach;?>
+                        <?php else :?>
+                        <tr>
+                            <td class="px-4 py-2 text-center" colspan="3">
+                                Data transaksi kosong.
+                            </td>
+                        </tr>
+                        <?php endif;?>
+                    </tbody>
+                </table>
+            </div>
+    </section>
+</div>
+
+<script src="/js/flowbite.min.js"></script>
+<script src="/js/datatables.js"></script>
+<script type="module">
+    const DataTable = window.simpleDatatables.DataTable;
+
+    const trxTable = document.getElementById("trx-table");
+    if (trxTable) {
+        const dataTable = new DataTable(trxTable, {
+            paging: true,
+            perPage: 5,
+            perPageSelect: [5, 10, 15, 20, 25],
+            searchable: true,
+            sortable: true
+        });
+    }
+</script>
 <script src="/js/pages/pembayaran.js"></script>

@@ -14,7 +14,7 @@ class AuthBE
 
     private $accessRules = [
         USER_ROLE_SUPERADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
-        USER_ROLE_ADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan'],
+        USER_ROLE_ADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
         USER_ROLE_STUDENT => ['dashboard', 'update-password'],
     ];
 
@@ -44,10 +44,11 @@ class AuthBE
             $username = $_POST['username'] ?? '';
             $password = md5($_POST['password']) ?? '';
 
-            $result = $this->db->query("SELECT u.* FROM user_class c JOIN users u ON u.id = c.user_id WHERE virtual_account = '$username' AND password = '$password'");
+            $result = $this->db->query("SELECT u.* FROM users u WHERE username = '$username' AND password = '$password'");
             $user = $this->db->fetchAssoc($result);
             if ($user) {
                 $_SESSION['user_id'] = $user['id'];
+                $_SESSION['role'] = $user['role'];
                 Response::success($user, 'Login successful');
             } else {
                 Response::error('Invalid credentials', 401);
@@ -76,8 +77,20 @@ class AuthBE
     public function getUser()
     {
         if ($this->isLoggedIn()) {
-            $result = $this->db->query('SELECT * FROM users WHERE id = ' . $_SESSION['user_id']);
-            return $this->db->fetchAssoc($result);
+            $stmt = $this->db->query('SELECT * FROM users WHERE id = ' . $_SESSION['user_id']);
+            $result = $this->db->fetchAssoc($stmt);
+
+            if($result['siswa_id'] == null){
+                return [
+                    'user' => $result
+                ];
+            }
+            $stmtSiswa = $this->db->query('SELECT * FROM siswa WHERE id = ' . $stmt['siswa_id']);
+            $student = $this->db->fetchAssoc($stmtSiswa);
+            return [
+                'user' => $result,
+                'student' => $student
+            ];
         }
         return null;
     }
@@ -85,7 +98,7 @@ class AuthBE
     public function getRole()
     {
         if ($this->isLoggedIn()) {
-            return $this->getUser()['role'];
+            return $this->getUser()['user']['role'];
         }
         return null;
     }

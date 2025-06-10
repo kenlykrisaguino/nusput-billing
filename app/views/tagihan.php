@@ -6,8 +6,21 @@ if (isset($_SESSION['msg'])) :?>
 <?php 
 unset($_SESSION['msg']);
 endif;?>
-
-<div class="w-full">
+<div class="w-1/6 bg-sky-600 flex-shrink-0 p-4">
+    <h3 class="text-white font-semibold mb-6">Quick Access</h3>
+    <div class="flex flex-col gap-2 text-slate-50">
+        <div class="flex gap-2 items-center mb-2">
+            <h4 class="text-xs uppercase">tagihan</h4>
+            <div class="flex-1">
+                <hr class="text-white">
+            </div>
+        </div>
+        <div onclick="document.getElementById('create-student').classList.remove('hidden')"
+            class="cursor-pointer hover:text-slate-200 hover:translate-x-2 transition-colors">
+        </div>
+    </div>
+</div>
+<div class="w-5/6 px-10 py-6 overflow-y-auto">
     <div class="flex justify-between w-full mb-2">
         <h1 class="text-lg font-semibold text-slate-800">Tagihan</h1>
         <form action="" method="get" class="flex gap-2">
@@ -160,11 +173,11 @@ endif;?>
                         <?= FormatHelper::formatRupiah($bill['tunggakan']) ?>
                     </td>
                     <?php foreach($months as $month) :
-                            $modalId = 'modal_' . $bill['virtual_account'] . '_' . $month;
-                            $detail = json_decode($bill["Detail$month"], true);
-
-                            $enableEdit = in_array($bill["Status$month"], [BILL_STATUS_ACTIVE, BILL_STATUS_INACTIVE, BILL_STATUS_UNPAID]);
-                        ?>
+                                $modalId = 'modal_' . $bill['virtual_account'] . '_' . $month;
+                                $detail = json_decode($bill["Detail$month"], true);
+    
+                                $enableEdit = in_array($bill["Status$month"], [BILL_STATUS_ACTIVE, BILL_STATUS_INACTIVE, BILL_STATUS_UNPAID]);
+                            ?>
                     <td class="px-6 py-4 whitespace-nowrap <?= Call::statusColor($bill["Status$month"]) ?>">
                         <button type="button"
                             onclick="document.getElementById('<?= $modalId ?>').classList.remove('hidden')"
@@ -249,23 +262,23 @@ endif;?>
                                     Tutup
                                 </button>
                                 <?php 
-                                        if($enableEdit):
-                                        $editId = 'modaledit_' . $bill['virtual_account'] . '_' . $month;            
-                                        
-                                        ?>
+                                            if($enableEdit):
+                                            $editId = 'modaledit_' . $bill['virtual_account'] . '_' . $month;            
+                                            
+                                            ?>
                                 <button onclick="changeModal('<?= $modalId ?>', '<?= $editId ?>')"
                                     class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
                                     Edit Biaya Keterlambatan
                                 </button>
                                 <?php 
-                                        endif;
-                                        ?>
+                                            endif;
+                                            ?>
                             </div>
                         </div>
 
                         <?php 
-                                if($enableEdit):
-                                ?>
+                                    if($enableEdit):
+                                    ?>
                         <div id="<?= $editId ?>"
                             class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
                             <form method="POST" action=""
@@ -292,8 +305,8 @@ endif;?>
                         </div>
 
                         <?php
-                                endif;
-                                ?>
+                                    endif;
+                                    ?>
 
                     </td>
                     <?php endforeach;?>

@@ -1,8 +1,8 @@
 <?php
 
-define('USER_ROLE_SUPERADMIN', 'SA');
-define('USER_ROLE_ADMIN', 'TE');
-define('USER_ROLE_STUDENT', 'ST');
+define('USER_ROLE_SUPERADMIN', 'admin');
+define('USER_ROLE_ADMIN', 'admin');
+define('USER_ROLE_STUDENT', 'student');
 
 define('BILL_STATUS_PAID', 'paid');
 define('BILL_STATUS_UNPAID', 'unpaid');

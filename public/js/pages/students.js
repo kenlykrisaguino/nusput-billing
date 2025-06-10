@@ -1,1155 +1,281 @@
-let publicFeeCategories = [];
+(function () {
+  "use strict";
 
-async function getPublicFeeCategories() {
-  if (publicFeeCategories && publicFeeCategories.length > 0) {
-    return publicFeeCategories;
-  }
-  try {
-    console.log("Fetching public fee categories...");
-    const response = await fetch("/api/get-fee-categories"); // Corrected endpoint?
-    const result = await response.json();
-    if (!response.ok || !result.success) {
-      throw new Error(
-        result.message || `Failed to fetch fee categories (${response.status})`
-      );
-    }
-    publicFeeCategories = result.data || [];
-    console.log("Public Fee Categories fetched:", publicFeeCategories);
-    return publicFeeCategories;
-  } catch (error) {
-    console.error("Error fetching public fee categories:", error);
-    alert("Gagal memuat kategori biaya tambahan.");
-    return [];
-  }
-}
-
-async function getClassesData(level = "", grade = "", section = "") {
-  const levelParam = typeof level === "object" ? level?.id ?? "" : level;
-  const gradeParam = typeof grade === "object" ? grade?.id ?? "" : grade;
-  const sectionParam =
-    typeof section === "object" ? section?.id ?? "" : section;
-  const params = new URLSearchParams({
-    level: levelParam,
-    grade: gradeParam,
-    section: sectionParam,
-  });
-  const url = `/api/filter-classes?${params.toString()}`;
-  console.log("Fetching:", url);
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-    console.log(
-      `Response Status for ${url}:`,
-      response.status,
-      response.statusText
-    );
-    if (!response.ok) {
-      let errorBody = `Status: ${response.status} ${response.statusText}`;
-      try {
-        const text = await response.text();
-        console.error(`Error response body for ${url}:`, text);
-        errorBody = text || errorBody;
-      } catch (e) {}
-      throw new Error(
-        `HTTP error! Failed to fetch from ${url}. Details: ${errorBody}`
-      );
-    }
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      console.warn(
-        `Received non-JSON response from ${url}. Content-Type: ${contentType}`
-      );
-      throw new Error(`Expected JSON response, but received ${contentType}`);
-    }
-    const result = await response.json();
-    console.log(`Data received from ${url}:`, result);
-    if (!result || !result.success) {
-      console.error(
-        `API Error from ${url}:`,
-        result?.message || "Unknown API error"
-      );
-      throw new Error(result?.message || "API request was not successful.");
-    }
-    return result.data || { levels: [], grades: [], sections: [], details: [] };
-  } catch (error) {
-    console.error(`Failed to fetch or process data from ${url}:`, error);
-    throw error;
-  }
-}
-
-function populateDropdown(
-  selectElement,
-  options,
-  defaultOptionText,
-  keepDefault = false,
-  defaultValue = ""
-) {
-  const defaultOption =
-    keepDefault && selectElement.options[0] ? selectElement.options[0] : null;
-  selectElement.innerHTML = "";
-  let hasDefault = false;
-  if (defaultOption) {
-    selectElement.appendChild(defaultOption);
-    defaultOption.value = defaultValue;
-    defaultOption.selected = true;
-    defaultOption.disabled = true;
-    defaultOption.textContent = defaultOptionText;
-    hasDefault = true;
-  } else if (defaultOptionText) {
-    const firstOption = document.createElement("option");
-    firstOption.textContent = defaultOptionText;
-    firstOption.value = defaultValue;
-    firstOption.selected = true;
-    firstOption.disabled = true;
-    selectElement.appendChild(firstOption);
-    hasDefault = true;
-  }
-  if (options && options.length > 0) {
-    try {
-      options.sort((a, b) => {
-        const textA = typeof a === "object" ? a.text || "" : a;
-        const textB = typeof b === "object" ? b.text || "" : b;
-        return String(textA).localeCompare(String(textB));
-      });
-    } catch (e) {
-      console.warn("Could not sort options:", options, e);
-    }
-    options.forEach((opt) => {
-      const optionElement = document.createElement("option");
-      if (typeof opt === "object" && opt !== null && opt.value !== undefined) {
-        optionElement.value = opt.value;
-        optionElement.textContent =
-          opt.text !== undefined ? opt.text : opt.value;
-      } else {
-        optionElement.value = opt;
-        optionElement.textContent = opt;
-      }
-      selectElement.appendChild(optionElement);
-    });
-    selectElement.disabled = false;
-  } else {
-    selectElement.disabled = hasDefault && options.length === 0;
-  }
-}
-
-function resetAndDisableDropdown(
-  selectElement,
-  defaultOptionText,
-  useDefaultText = "-- Tidak Ada Kelas --"
-) {
+  // Memeriksa ketersediaan komponen global.
   if (
-    selectElement.name === "edit-section" ||
-    selectElement.name === "section"
+    typeof window.api === "undefined" ||
+    typeof window.showToast === "undefined"
   ) {
-    populateDropdown(selectElement, [], useDefaultText, true, "");
-  } else {
-    populateDropdown(selectElement, [], defaultOptionText, true, "");
-  }
-  selectElement.disabled = true;
-}
-
-function closeModal(id) {
-  const modal = document.getElementById(id);
-  if (!modal) return;
-  modal.classList.add("hidden");
-  const form = modal.querySelector("form");
-  if (form) {
-    form.reset();
-    if (form.newFeeIndex) {
-      delete form.newFeeIndex;
-    } // Reset counter
-
-    if (id === "create-student") {
-      resetAndDisableDropdown(modal.querySelector("#grade"), "Pilih Tingkat");
-      resetAndDisableDropdown(
-        modal.querySelector("#section"),
-        "Pilih Kelas",
-        "-- Tidak Ada Kelas --"
-      );
-      const levelSelectModal = modal.querySelector("#level");
-      if (levelSelectModal) levelSelectModal.selectedIndex = 0;
-    }
-    if (id === "edit-student") {
-      resetAndDisableDropdown(
-        modal.querySelector("#edit-grade"),
-        "Pilih Tingkat"
-      );
-      resetAndDisableDropdown(
-        modal.querySelector("#edit-section"),
-        "Pilih Kelas",
-        "-- Tidak Ada Kelas --"
-      );
-      const editLevelSelectModal = modal.querySelector("#edit-level");
-      if (editLevelSelectModal) editLevelSelectModal.selectedIndex = 0;
-      const feesContainer = modal.querySelector("#additional-fees-container");
-      if (feesContainer) feesContainer.innerHTML = "";
-    }
-  }
-  const submitButton = form?.querySelector(
-    'button[type="submit"], button[onclick^="submitEditStudent"]'
-  );
-  if (submitButton) {
-    submitButton.disabled = false;
-    submitButton.textContent = id === "create-student" ? "Tambah" : "Edit";
-    submitButton.classList.add("cursor-pointer");
-    submitButton.classList.remove("cursor-progress");
-  }
-}
-
-function showEditTab(id, element) {
-  const modal = element.closest(".fixed");
-  if (!modal) return;
-  const tabs = modal.querySelectorAll(".tab-content");
-  const buttons = modal.querySelectorAll(".tab-button");
-  tabs.forEach((tab) => tab.classList.add("hidden"));
-  buttons.forEach((btn) => {
-    btn.classList.remove("border-blue-600");
-    btn.classList.add("border-transparent");
-  });
-  const targetTab = modal.querySelector(`#${id}-tab`);
-  if (targetTab) targetTab.classList.remove("hidden");
-  element.classList.remove("border-transparent");
-  element.classList.add("border-blue-600");
-}
-
-async function populateLevels(selectElement, gradeElement, sectionElement) {
-  if (!selectElement) return;
-  resetAndDisableDropdown(selectElement, "Memuat Jenjang...");
-  if (gradeElement) resetAndDisableDropdown(gradeElement, "Pilih Tingkat");
-  if (sectionElement)
-    resetAndDisableDropdown(
-      sectionElement,
-      "Pilih Kelas",
-      "-- Tidak Ada Kelas --"
-    );
-  try {
-    const responseData = await getClassesData();
-    const levelOptions = responseData.levels.map((level) => ({
-      value: level.id,
-      text: level.name,
-    }));
-    populateDropdown(selectElement, levelOptions, "Pilih Jenjang");
-  } catch (error) {
-    console.error("Failed to populate levels:", error);
-    populateDropdown(selectElement, [], "Gagal Memuat Jenjang", true);
-  }
-}
-
-async function populateGrades(
-  selectedLevelId,
-  levelElement,
-  gradeElement,
-  sectionElement
-) {
-  if (!gradeElement) return;
-  resetAndDisableDropdown(gradeElement, "Memuat Tingkat...");
-  if (sectionElement)
-    resetAndDisableDropdown(
-      sectionElement,
-      "Pilih Kelas",
-      "-- Tidak Ada Kelas --"
-    );
-  if (!selectedLevelId) {
-    resetAndDisableDropdown(gradeElement, "Pilih Tingkat");
-    return;
-  }
-  try {
-    const responseData = await getClassesData(selectedLevelId);
-    const gradeOptions = responseData.grades.map((grade) => ({
-      value: grade.id,
-      text: grade.name,
-    }));
-    populateDropdown(gradeElement, gradeOptions, "Pilih Tingkat");
-  } catch (error) {
     console.error(
-      `Failed to populate grades for level ID ${selectedLevelId}:`,
-      error
-    );
-    populateDropdown(gradeElement, [], "Gagal Memuat Tingkat", true);
-  }
-}
-
-async function populateSections(
-  selectedLevelId,
-  selectedGradeId,
-  gradeElement,
-  sectionElement
-) {
-  if (!sectionElement) return;
-  resetAndDisableDropdown(sectionElement, "Memuat Kelas...");
-  if (!selectedLevelId || !selectedGradeId) {
-    resetAndDisableDropdown(
-      sectionElement,
-      "Pilih Kelas",
-      "-- Tidak Ada Kelas --"
+      "students.js: Komponen global tidak ditemukan. Pastikan app.js dimuat."
     );
     return;
   }
-  try {
-    const responseData = await getClassesData(selectedLevelId, selectedGradeId);
-    const sectionOptions = responseData.sections.map((section) => ({
-      value: section.id,
-      text: section.name,
-    }));
-    populateDropdown(sectionElement, sectionOptions, "-- Tidak Ada Kelas --");
-  } catch (error) {
-    console.error(
-      `Failed to populate sections for ${selectedLevelId}-${selectedGradeId}:`,
-      error
-    );
-    populateDropdown(sectionElement, [], "Gagal Memuat Kelas", true);
-  }
-}
 
-function removeFeeRow(button) {
-  const rowDiv = button.closest(".fee-row");
-  const container = document.getElementById("additional-fees-container");
-  if (rowDiv) {
-    rowDiv.remove();
-  }
-  if (container && !container.querySelector(".fee-row")) {
-    const modal = container.closest("#edit-student");
-    if (modal) {
-      const yearSelect = modal.querySelector("#edit-academic-year");
-      const semesterSelect = modal.querySelector("#edit-semester");
-      const monthSelect = modal.querySelector("#edit-month");
-      if (yearSelect.value && semesterSelect.value && monthSelect.value) {
-        container.innerHTML =
-          '<p class="text-xs text-slate-500 italic">Tidak ada biaya tambahan untuk periode ini.</p>';
-      } else {
-        container.innerHTML =
-          '<p class="text-xs text-slate-500 italic">Pilih Tahun Ajaran, Semester, dan Bulan untuk melihat/mengedit biaya tambahan.</p>';
-      }
-    }
-  }
-}
-
-function addNewFeeRow() {
-  const container = document.getElementById("additional-fees-container");
-  if (!container) {
-    console.error("Container #additional-fees-container not found.");
-    return;
-  }
-  const modal = container.closest("#edit-student");
-  if (!modal) return;
-  const form = modal.querySelector("form");
-  if (!form) return;
-  const yearSelect = form.querySelector("#edit-academic-year");
-  const semesterSelect = form.querySelector("#edit-semester");
-  const monthSelect = form.querySelector("#edit-month");
-  if (!yearSelect?.value || !semesterSelect?.value || !monthSelect?.value) {
-    alert("Silakan pilih Tahun Ajaran, Semester, dan Bulan terlebih dahulu.");
-    return;
-  }
-  const placeholder = container.querySelector("p.text-slate-500");
-  if (placeholder) {
-    container.innerHTML = "";
-  }
-  if (!publicFeeCategories || publicFeeCategories.length === 0) {
-    alert("Kategori biaya tambahan belum dimuat. Coba lagi nanti.");
-    return;
-  }
-  if (typeof form.newFeeIndex !== "number") {
-    form.newFeeIndex = 1;
-  }
-  const newIndex = form.newFeeIndex++;
-  const feeDiv = document.createElement("div");
-  feeDiv.className = "grid grid-cols-12 gap-2 items-center fee-row new-fee-row";
-  const selectContainer = document.createElement("div");
-  selectContainer.className = "col-span-5";
-  const categorySelect = document.createElement("select");
-  categorySelect.name = `new_fee[${newIndex}][category]`; // Changed name format
-  categorySelect.className =
-    "block w-full px-2 py-1 text-xs text-slate-800 bg-slate-100 rounded-md border border-slate-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500";
-  populateDropdown(
-    categorySelect,
-    publicFeeCategories.map((cat) => ({ value: cat.id, text: cat.name })),
-    "Pilih Kategori",
-    false
-  );
-  selectContainer.appendChild(categorySelect);
-  const inputContainer = document.createElement("div");
-  inputContainer.className = "col-span-5";
-  const amountInput = document.createElement("input");
-  amountInput.type = "number";
-  amountInput.step = "any";
-  amountInput.name = `new_fee[${newIndex}][amount]`; // Changed name format
-  amountInput.placeholder = "Jumlah";
-  amountInput.className =
-    "block w-full px-2 py-1 text-xs text-slate-800 bg-slate-100 rounded-md border border-slate-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500";
-  inputContainer.appendChild(amountInput);
-  const removeContainer = document.createElement("div");
-  removeContainer.className = "col-span-2 text-right";
-  const removeButton = document.createElement("button");
-  removeButton.type = "button";
-  removeButton.title = "Hapus Biaya Ini";
-  removeButton.className = "text-red-500 hover:text-red-700 transition-colors";
-  removeButton.innerHTML = '<i class="fa-solid fa-trash-can text-xs"></i>';
-  removeButton.onclick = function () {
-    removeFeeRow(this);
+  // --- KONSTANTA ---
+  const API_URL = {
+    GET_STUDENTS: "/students-list",
+    DELETE_STUDENT: "/students-delete",
+    GET_JENJANG: "/jenjang",
+    GET_TINGKAT: "/tingkat",
+    GET_KELAS: "/kelas",
   };
-  removeContainer.appendChild(removeButton);
-  feeDiv.appendChild(selectContainer);
-  feeDiv.appendChild(inputContainer);
-  feeDiv.appendChild(removeContainer);
-  container.appendChild(feeDiv);
-}
 
-async function loadAdditionalFees(userId, year, semester, month) {
-  const container = document.getElementById("additional-fees-container");
-  if (!container) {
-    console.error("Container #additional-fees-container not found.");
-    return;
-  }
-  container.innerHTML =
-    '<p class="text-xs text-slate-500 italic">Memuat biaya tambahan...</p>';
-  if (!userId || !year || !semester || !month) {
-    container.innerHTML =
-      '<p class="text-xs text-slate-500 italic">Pilih Tahun Ajaran, Semester, dan Bulan untuk melihat/mengedit biaya tambahan.</p>';
-    return;
-  }
-  const params = new URLSearchParams({
-    user_id: userId,
-    year: year,
-    semester: semester,
-    month: month,
-  });
-  try {
-    console.log(`Fetching fees with params: ${params.toString()}`);
-    const response = await fetch(`/api/get-student-fees?${params.toString()}`);
-    const result = await response.json();
-    console.log("Additional Fees Response:", result);
-    if (!response.ok || !result.success) {
-      throw new Error(
-        result.message || `Failed to fetch fees (${response.status})`
-      );
-    }
-    container.innerHTML = "";
-    if (result.data && result.data.length > 0) {
-      result.data.forEach((fee) => {
-        const feeDiv = document.createElement("div");
-        feeDiv.className =
-          "grid grid-cols-12 gap-2 items-center fee-row existing-fee-row";
-        const labelContainer = document.createElement("div");
-        labelContainer.className = "col-span-5";
-        const label = document.createElement("label");
-        label.className = "text-xs text-slate-700 truncate";
-        label.textContent = fee.name || "Biaya Lain";
-        label.htmlFor = `edit_additional_fee[${fee.id}]`;
-        label.title = fee.name || "Biaya Lain"; // Use edit_ format for existing
-        labelContainer.appendChild(label);
-        const inputContainer = document.createElement("div");
-        inputContainer.className = "col-span-5";
-        const input = document.createElement("input");
-        input.type = "number";
-        input.step = "any";
-        input.name = `edit_additional_fee[${fee.id}]`; // Use edit_ format for existing
-        input.id = `edit_additional_fee[${fee.id}]`;
-        input.value = fee.amount || 0;
-        input.className =
-          "block w-full px-2 py-1 text-xs text-slate-800 bg-slate-100 rounded-md border border-slate-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500";
-        inputContainer.appendChild(input);
-        const removeContainer = document.createElement("div");
-        removeContainer.className = "col-span-2 text-right";
-        const removeButton = document.createElement("button");
-        removeButton.type = "button";
-        removeButton.title = "Hapus Biaya Ini (Akan dihapus saat disimpan)";
-        removeButton.className =
-          "text-red-500 hover:text-red-700 transition-colors";
-        removeButton.innerHTML =
-          '<i class="fa-solid fa-trash-can text-xs"></i>';
-        removeButton.onclick = function () {
-          removeFeeRow(this);
-        };
-        removeContainer.appendChild(removeButton);
-        feeDiv.appendChild(labelContainer);
-        feeDiv.appendChild(inputContainer);
-        feeDiv.appendChild(removeContainer);
-        container.appendChild(feeDiv);
-      });
-    } else {
-      container.innerHTML =
-        '<p class="text-xs text-slate-500 italic">Tidak ada biaya tambahan untuk periode ini.</p>';
-    }
-  } catch (error) {
-    console.error("Error loading additional fees:", error);
-    container.innerHTML = `<p class="text-xs text-red-500 italic">Gagal memuat biaya tambahan: ${error.message}</p>`;
-  }
-}
+  const EL_IDS = {
+    STUDENT_TABLE: "student-table",
+    FILTER_MODAL: "filter-student-modal",
+    FILTER_FORM: "filter-student-form",
+    FILTER_JENJANG: "filter_jenjang",
+    FILTER_TINGKAT: "filter_tingkat",
+    FILTER_KELAS: "filter_kelas",
+    APPLY_FILTER_BTN: "apply-filter-btn",
+    RESET_FILTER_BTN: "reset-filter-btn",
+  };
 
-async function editStudent(userId) {
-  const modal = document.getElementById("edit-student");
-  if (!modal) return;
-  const form = modal.querySelector("#edit-student-form");
-  if (form) {
-    form.reset();
-    form.newFeeIndex = 1;
-  }
-  const infoTabButton = modal.querySelector('button[onclick*="information"]');
-  if (infoTabButton) showEditTab("information", infoTabButton);
-  console.log(`Fetching data for User ID: ${userId}`);
-  modal.classList.remove("hidden");
-  const editLevelSelect = modal.querySelector("#edit-level");
-  const editGradeSelect = modal.querySelector("#edit-grade");
-  const editSectionSelect = modal.querySelector("#edit-section");
-  const feesContainer = modal.querySelector("#additional-fees-container");
-  resetAndDisableDropdown(editLevelSelect, "Memuat...");
-  resetAndDisableDropdown(editGradeSelect, "Memuat...");
-  resetAndDisableDropdown(editSectionSelect, "-- Tidak Ada Kelas --");
-  if (feesContainer)
-    feesContainer.innerHTML =
-      '<p class="text-xs text-slate-500 italic">Pilih Tahun Ajaran, Semester, dan Bulan untuk melihat/mengedit biaya tambahan.</p>';
-  await getPublicFeeCategories();
-  try {
-    const response = await fetch(`/api/get-student-detail?user_id=${userId}`);
-    const result = await response.json();
-    console.log("Student Detail Response:", result);
-    if (!response.ok || !result.success) {
-      throw new Error(
-        result.message || `Failed to fetch student data (${response.status})`
-      );
-    }
-    const studentData = result.data;
-    if (!studentData) {
-      throw new Error("No student data found in the API response.");
-    }
-    modal.querySelector("#edit-user-id").value = userId;
-    modal.querySelector("#edit-nis").value = studentData.nis || "";
-    modal.querySelector("#edit-name").value = studentData.name || "";
-    modal.querySelector("#edit-dob").value = studentData.dob || "";
-    modal.querySelector("#edit-phone-number").value = studentData.phone || "";
-    modal.querySelector("#edit-email-address").value = studentData.email || "";
-    modal.querySelector("#edit-parent-phone").value =
-      studentData.parent_phone || "";
-    modal.querySelector("#edit-address").value = studentData.address || "";
-    modal.querySelector("#edit-monthly-fee").value =
-      studentData.monthly_fee || "";
-    await populateLevels(editLevelSelect, editGradeSelect, editSectionSelect);
-    editLevelSelect.value = studentData.level_id || "";
-    if (editLevelSelect.value) {
-      await populateGrades(
-        studentData.level_id,
-        editLevelSelect,
-        editGradeSelect,
-        editSectionSelect
-      );
-      editGradeSelect.value = studentData.grade_id || "";
-      if (editGradeSelect.value) {
-        await populateSections(
-          studentData.level_id,
-          studentData.grade_id,
-          editGradeSelect,
-          editSectionSelect
-        );
-        editSectionSelect.value = studentData.section_id ?? "";
-      } else {
-        resetAndDisableDropdown(
-          editSectionSelect,
-          "-- Tidak Ada Kelas --",
-          true
-        );
-      }
-    } else {
-      resetAndDisableDropdown(editGradeSelect, "Pilih Tingkat", true);
-      resetAndDisableDropdown(editSectionSelect, "-- Tidak Ada Kelas --", true);
-    }
-    const yearSelect = modal.querySelector("#edit-academic-year");
-    const semesterSelect = modal.querySelector("#edit-semester");
-    const monthSelect = modal.querySelector("#edit-month");
-    const currentYear = new Date().getFullYear();
-    const yearOptions = [];
-    for (let y = currentYear + 1; y >= currentYear - 5; y--) {
-      yearOptions.push({ value: `${y}/${y + 1}`, text: `${y}/${y + 1}` });
-    }
-    populateDropdown(yearSelect, yearOptions, "Pilih Tahun", true);
-    populateDropdown(
-      semesterSelect,
-      [
-        { value: 1, text: "Ganjil" },
-        { value: 2, text: "Genap" },
-      ],
-      "Pilih Semester",
-      true
-    );
-    populateDropdown(
-      monthSelect,
-      [
-        { value: 1, text: "Januari" },
-        { value: 2, text: "Februari" },
-        { value: 3, text: "Maret" },
-        { value: 4, text: "April" },
-        { value: 5, text: "Mei" },
-        { value: 6, text: "Juni" },
-        { value: 7, text: "Juli" },
-        { value: 8, text: "Agustus" },
-        { value: 9, text: "September" },
-        { value: 10, text: "Oktober" },
-        { value: 11, text: "November" },
-        { value: 12, text: "Desember" },
-      ],
-      "Pilih Bulan",
-      true
-    );
-    const loadFeesHandler = () => {
-      loadAdditionalFees(
-        userId,
-        yearSelect.value,
-        semesterSelect.value,
-        monthSelect.value
-      );
-    };
-    yearSelect.removeEventListener("change", yearSelect._loadFeesHandler);
-    semesterSelect.removeEventListener(
-      "change",
-      semesterSelect._loadFeesHandler
-    );
-    monthSelect.removeEventListener("change", monthSelect._loadFeesHandler);
-    yearSelect._loadFeesHandler = loadFeesHandler;
-    semesterSelect._loadFeesHandler = loadFeesHandler;
-    monthSelect._loadFeesHandler = loadFeesHandler;
-    yearSelect.addEventListener("change", loadFeesHandler);
-    semesterSelect.addEventListener("change", loadFeesHandler);
-    monthSelect.addEventListener("change", loadFeesHandler);
-  } catch (error) {
-    console.error(`Failed to load student data for ID ${userId}:`, error);
-    alert(`Gagal memuat data siswa: ${error.message}`);
-    closeModal("edit-student");
-  }
-}
+  // Shortcut untuk helper dan fungsi global.
+  const { formatRupiah, escapeHtml, escapeJsString } = window.helpers;
+  const showToast = window.showToast;
+  const showConfirmationDialog = window.showConfirmationDialog;
+  const api = window.api;
 
-async function submitStudent(event) {
-  event.preventDefault();
-  const form = event.target;
-  const fileInput =
-    form.querySelector("#bulk-students") ||
-    document.getElementById("bulk-students");
-  const submitButton = form.querySelector('button[type="submit"]');
-  const originalButtonText = "Tambah";
-  submitButton.disabled = true;
-  submitButton.textContent = "Processing...";
-  submitButton.classList.remove("cursor-pointer");
-  submitButton.classList.add("cursor-progress");
-  let url;
-  let requestBody;
-  let headers = { Accept: "application/json" };
-  let isBulkUpload = false;
-  if (fileInput && fileInput.files && fileInput.files.length > 0) {
-    isBulkUpload = true;
-    url = "/api/upload-students-bulk";
-    requestBody = new FormData();
-    requestBody.append("bulk-students", fileInput.files[0]);
-    console.log("Preparing bulk upload (FormData)");
-  } else {
-    isBulkUpload = false;
-    url = "/api/upload-student";
-    const dataToSend = {};
-    const formDataForValidation = new FormData(form);
-    const alwaysRequiredFields = [
-      "nis",
-      "name",
-      "parent_phone",
-      "level",
-      "grade",
-    ];
-    let missingField = false;
-    let firstMissingFieldName = "";
-    for (const fieldName of alwaysRequiredFields) {
-      const value = formDataForValidation.get(fieldName);
-      if (!value || (typeof value === "string" && value.trim() === "")) {
-        const fieldElement = form.elements[fieldName];
-        const label =
-          fieldElement?.labels?.[0]?.textContent ||
-          fieldElement?.previousElementSibling?.textContent ||
-          fieldName;
-        firstMissingFieldName = label.replace(":", "").replace("*", "").trim();
-        missingField = true;
-        break;
-      }
-      dataToSend[fieldName] = value.trim();
-    }
-    const optionalFields = ["dob", "phone", "email", "address", "section"];
-    optionalFields.forEach((fieldName) => {
-      const value = formDataForValidation.get(fieldName);
-      if (value !== null && typeof value !== "undefined" && value !== "") {
-        dataToSend[fieldName] = value;
-      }
-    });
-    if (!missingField) {
-      const sectionSelect = form.elements["section"];
-      if (sectionSelect) {
-        const hasAvailableSections =
-          sectionSelect.options.length > 1 &&
-          !sectionSelect.disabled &&
-          sectionSelect.options[0].value !== "";
-        const sectionValue = dataToSend["section"];
-        if (hasAvailableSections && (!sectionValue || sectionValue === "")) {
-          missingField = true;
-          const label =
-            sectionSelect.labels?.[0]?.textContent ||
-            sectionSelect.previousElementSibling?.textContent ||
-            "section";
-          firstMissingFieldName = label
-            .replace(":", "")
-            .replace("*", "")
-            .trim();
-        }
-      }
-    }
-    if (missingField) {
-      alert(`Error: Field "${firstMissingFieldName}" wajib diisi.`);
-      submitButton.disabled = false;
-      submitButton.textContent = originalButtonText;
-      submitButton.classList.add("cursor-pointer");
-      submitButton.classList.remove("cursor-progress");
+  // Variabel untuk menyimpan kondisi filter yang sedang aktif.
+  let currentFilters = {};
+
+  /**
+   * Menggambar ulang baris-baris data di dalam tabel siswa.
+   */
+  function renderStudentsToTable(students) {
+    const tbody = document.querySelector(`#${EL_IDS.STUDENT_TABLE} tbody`);
+    if (!tbody) return;
+
+    tbody.innerHTML = "";
+    if (!students || students.length === 0) {
+      tbody.innerHTML =
+        '<tr><td class="px-4 py-2 text-center text-gray-500" colspan="6">Tidak ada data siswa ditemukan.</td></tr>';
       return;
     }
-    headers["Content-Type"] = "application/json";
-    requestBody = JSON.stringify(dataToSend);
-    console.info("Preparing single student upload (JSON):", dataToSend);
-  }
-  try {
-    console.log(`Sending request to ${url}`);
-    const response = await fetch(url, {
-      method: "POST",
-      headers: headers,
-      body: requestBody,
+
+    students.forEach((student) => {
+      const studentNameEscaped = escapeJsString(student.nama);
+      const row = `
+        <tr class="odd:bg-white even:bg-gray-50 border-b hover:bg-gray-100">
+          <td class="px-4 py-2 flex gap-2 items-center">
+            <button onclick="pages.students.openEditStudentModal('${escapeJsString(
+              student.id
+            )}')" title="Edit Siswa" class="text-sky-600 hover:text-sky-800"><i class="ti ti-pencil"></i></button>
+            <button onclick="pages.students.handleDeleteStudent('${escapeJsString(
+              student.id
+            )}', '${studentNameEscaped}')" title="Hapus Siswa" class="text-red-500 hover:text-red-700"><i class="ti ti-trash"></i></button>
+          </td>
+          <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+            ${escapeHtml(
+              student.nama
+            )}<div class="text-xs text-slate-500 font-normal">${escapeHtml(
+        student.nis
+      )}</div>
+          </th>
+          <td class="px-4 py-2 whitespace-nowrap">${escapeHtml(
+            student.jenjang || ""
+          )} ${escapeHtml(student.tingkat || "")} ${escapeHtml(
+        student.kelas || ""
+      )}</td>
+          <td class="px-4 py-2 whitespace-nowrap">${escapeHtml(
+            student.va || ""
+          )}</td>
+          <td class="px-4 py-2 whitespace-nowrap">${formatRupiah(
+            student.spp || 0
+          )}</td>
+          <td class="px-4 py-2 whitespace-nowrap">${escapeHtml(
+            student.latest_payment || "-"
+          )}</td>
+        </tr>
+      `;
+      tbody.insertAdjacentHTML("beforeend", row);
     });
-    console.info("Response Status:", response.status);
-    console.info("Response OK:", response.ok);
-    let result;
-    try {
-      const responseText = await response.text();
-      console.log("Raw Response Body:", responseText);
-      if (responseText) {
-        result = JSON.parse(responseText);
-        console.log("Parsed JSON Response:", result);
-      } else {
-        result = {
-          success: response.ok,
-          message: response.ok ? "Success (No Content)" : "Error (No Content)",
-        };
-        console.log("Empty response body, assuming success based on status.");
-      }
-    } catch (e) {
-      console.error("Failed to parse JSON response:", e);
-      if (!response.ok) {
-        throw new Error(
-          response.statusText || `Server error ${response.status}`
-        );
-      } else {
-        alert("Received an unexpected response format from the server.");
-        result = { message: "Unexpected response format." };
-      }
-    }
-    if (!result.success && !response.ok) {
-      console.error("Server Error:", response.status, result);
-      const errorMessage =
-        result?.message ||
-        (Array.isArray(result?.errors)
-          ? result.errors.join(", ")
-          : `Error ${response.status}`);
-      alert(errorMessage);
-    } else {
-      if (
-        isBulkUpload &&
-        response.headers.get("Content-Type")?.includes("spreadsheetml.sheet")
-      ) {
-        alert(
-          "Import failed. Please check the downloaded error report file for details."
-        );
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = downloadUrl;
-        a.download = "import_student_errors.xlsx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-        if (typeof closeModal === "function") {
-          closeModal("create-student");
-        }
-      } else {
-        alert(
-          result.message ||
-            (isBulkUpload
-              ? "File berhasil diproses!"
-              : "Data siswa berhasil ditambahkan!")
-        );
-        if (typeof closeModal === "function") {
-          closeModal("create-student");
-        }
-        location.reload();
-      }
-    }
-  } catch (error) {
-    console.error("Fetch or Processing Error:", error);
-    alert(`Terjadi kesalahan: ${error.message}`);
-  } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = originalButtonText;
-    submitButton.classList.add("cursor-pointer");
-    submitButton.classList.remove("cursor-progress");
   }
-}
 
-async function submitUpdateStudents(event) {
-  event.preventDefault();
-  const form = event.target;
-  const fileInput =
-    form.querySelector("#bulk-update-students") ||
-    document.getElementById("bulk-update-students");
-  const submitButton = form.querySelector('button[type="submit"]');
-  const originalButtonText = "Update";
-  submitButton.disabled = true;
-  submitButton.textContent = "Processing...";
-  submitButton.classList.remove("cursor-pointer");
-  submitButton.classList.add("cursor-progress");
-  let url;
-  let requestBody;
-  let headers = {};
+  /**
+   * Mengambil data siswa dari API dengan menyertakan filter yang aktif.
+   */
+  function loadStudentsData() {
+    showToast("Memuat data siswa...", "info");
 
-  url = "/api/update-students-bulk";
-  requestBody = new FormData();
-  requestBody.append("bulk-update-students", fileInput.files[0]);
+    const params = new URLSearchParams(currentFilters).toString();
+    const apiUrl = `${API_URL.GET_STUDENTS}?${params}`;
 
-  try {
-    console.log(`Sending request to ${url}`);
-    const response = await fetch(url, {
-      method: "POST",
-      headers: headers,
-      body: requestBody,
-    });
-    console.info("Response Status:", response.status);
-    console.info("Response OK:", response.ok);
-    let result;
-    try {
-      const responseText = await response.text();
-      console.log("Raw Response Body:", responseText);
-      if (responseText) {
-        result = JSON.parse(responseText);
-        console.log("Parsed JSON Response:", result);
-      } else {
-        result = {
-          success: response.ok,
-          message: response.ok ? "Success (No Content)" : "Error (No Content)",
-        };
-        console.log("Empty response body, assuming success based on status.");
-      }
-    } catch (e) {
-      console.error("Failed to parse JSON response:", e);
-      if (!response.ok) {
-        throw new Error(
-          response.statusText || `Server error ${response.status}`
-        );
-      } else {
-        alert("Received an unexpected response format from the server.");
-        result = { message: "Unexpected response format." };
-      }
-    }
-    if (!result.success && !response.ok) {
-      console.error("Server Error:", response.status, result);
-      const errorMessage =
-        result?.message ||
-        (Array.isArray(result?.errors)
-          ? result.errors.join(", ")
-          : `Error ${response.status}`);
-      alert(errorMessage);
-    } else {
-      if (
-        response.headers.get("Content-Type")?.includes("spreadsheetml.sheet")
-      ) {
-        alert(
-          "Update failed. Please check the downloaded error report file for details."
-        );
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = downloadUrl;
-        a.download = "update_student_errors.xlsx";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(downloadUrl);
-        if (typeof closeModal === "function") {
-          closeModal("update-students");
+    api
+      .get(apiUrl)
+      .then((response) => {
+        if (response.data && response.data.success) {
+          renderStudentsToTable(response.data.data);
+          showToast("Data berhasil dimuat.", "success");
+        } else {
+          renderStudentsToTable([]);
         }
-      } else {
-        alert(
-          result.message ||
-            (isBulkUpload
-              ? "File berhasil diproses!"
-              : "Data siswa berhasil ditambahkan!")
-        );
-        if (typeof closeModal === "function") {
-          closeModal("update-students");
-        }
-        location.reload();
-      }
-    }
-  } catch (error) {
-    console.error("Fetch or Processing Error:", error);
-    alert(`Terjadi kesalahan: ${error.message}`);
-  } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = originalButtonText;
-    submitButton.classList.add("cursor-pointer");
-    submitButton.classList.remove("cursor-progress");
-  }
-}
-
-async function submitEditStudent(button) {
-  const form = button.closest("form");
-  if (!form) {
-    console.error("Could not find form for edit button");
-    return;
-  }
-  const url = "/api/update-student";
-  const submitButton = button;
-  const originalButtonText = "Edit";
-
-  const dataToSend = {};
-  const tempFormData = new FormData(form);
-
-  dataToSend["user_id"] = parseInt(tempFormData.get("user_id"), 10);
-  dataToSend["edit-nis"] = tempFormData.get("edit-nis");
-  dataToSend["edit-name"] = tempFormData.get("edit-name");
-  dataToSend["edit-dob"] = tempFormData.get("edit-dob");
-  dataToSend["edit-phone-number"] = tempFormData.get("edit-phone-number");
-  dataToSend["edit-email-address"] = tempFormData.get("edit-email-address");
-  dataToSend["edit-parent-phone"] = tempFormData.get("edit-parent-phone");
-  dataToSend["edit-address"] = tempFormData.get("edit-address");
-  dataToSend["edit-level"] = tempFormData.get("edit-level");
-  dataToSend["edit-grade"] = tempFormData.get("edit-grade");
-  dataToSend["edit-section"] = tempFormData.get("edit-section");
-  dataToSend["edit-monthly-fee"] = tempFormData.get("edit-monthly-fee");
-  dataToSend["edit-academic-year"] = tempFormData.get("edit-academic-year");
-  dataToSend["edit-semester"] = tempFormData.get("edit-semester");
-  dataToSend["edit-month"] = tempFormData.get("edit-month");
-
-  dataToSend["new_fee"] = [];
-  const newFeeRows = form.querySelectorAll(".new-fee-row");
-  newFeeRows.forEach((row) => {
-    const categorySelect = row.querySelector('select[name^="new_fee["]');
-    const amountInput = row.querySelector('input[name^="new_fee["]');
-    if (
-      categorySelect &&
-      amountInput &&
-      categorySelect.value &&
-      amountInput.value
-    ) {
-      dataToSend["new_fee"].push({
-        category: parseInt(categorySelect.value, 10),
-        amount: parseFloat(amountInput.value),
+      })
+      .catch((error) => {
+        console.error("Error memuat data siswa:", error);
+        renderStudentsToTable([]);
       });
+  }
+
+  /**
+   * Membuka modal edit siswa (placeholder).
+   */
+  function openEditStudentModal(studentId) {
+    window.dispatchEvent(
+      new CustomEvent("open-edit-student", {
+        detail: { studentId: studentId },
+      })
+    );
+  }
+
+  /**
+   * Menangani proses soft-delete (menonaktifkan) siswa dengan konfirmasi.
+   */
+  function handleDeleteStudent(studentId, studentName) {
+    showConfirmationDialog(
+      {
+        title: `Nonaktifkan Siswa "${studentName}"?`,
+        text: "Data siswa ini akan dinonaktifkan.",
+        icon: "warning",
+        confirmButtonText: "Ya, Nonaktifkan",
+      },
+      (result) => {
+        if (result.isConfirmed) {
+          api
+            .delete(`${API_URL.DELETE_STUDENT}/${studentId}`)
+            .then((response) => {
+              if (response.data && response.data.success) {
+                showToast(
+                  response.data.message || "Siswa berhasil dinonaktifkan.",
+                  "success"
+                );
+                loadStudentsData();
+              }
+            });
+        }
+      }
+    );
+  }
+
+  /**
+   * Mengambil nilai dari form filter dan memuat ulang data.
+   */
+  function applyFiltersAndReload() {
+    const filterForm = document.getElementById(EL_IDS.FILTER_FORM);
+    const formData = new FormData(filterForm);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+      if (value) params.append(key, value);
     }
+
+    currentFilters = Object.fromEntries(params.entries());
+    loadStudentsData();
+    document.getElementById(EL_IDS.FILTER_MODAL).classList.add("hidden");
+  }
+
+  /**
+   * Mengosongkan form filter dan memuat ulang data.
+   */
+  function resetFiltersAndReload() {
+    document.getElementById(EL_IDS.FILTER_FORM).reset();
+    currentFilters = {};
+    loadStudentsData();
+    document.getElementById(EL_IDS.FILTER_MODAL).classList.add("hidden");
+  }
+
+  /**
+   * Menjalankan semua inisialisasi setelah halaman selesai dimuat.
+   */
+  document.addEventListener("DOMContentLoaded", () => {
+    // Muat data tabel utama.
+    if (document.getElementById(EL_IDS.STUDENT_TABLE)) {
+      loadStudentsData();
+    }
+
+    // Inisialisasi logika untuk modal filter.
+    const filterModal = document.getElementById(EL_IDS.FILTER_MODAL);
+    if (!filterModal) return;
+
+    const selectJenjang = document.getElementById(EL_IDS.FILTER_JENJANG);
+    const selectTingkat = document.getElementById(EL_IDS.FILTER_TINGKAT);
+    const selectKelas = document.getElementById(EL_IDS.FILTER_KELAS);
+
+    const populateSelect = (select, data, placeholder) => {
+      select.innerHTML = `<option value="">${placeholder}</option>`;
+      data.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.nama;
+        select.appendChild(option);
+      });
+      select.disabled = false;
+      select.classList.remove("bg-gray-100");
+    };
+
+    const loadFilterJenjang = async () => {
+      try {
+        const response = await api.get(API_URL.GET_JENJANG);
+        if (response.data.success)
+          populateSelect(selectJenjang, response.data.data, "Semua Jenjang");
+      } catch (error) {
+        console.error("Gagal memuat jenjang untuk filter:", error);
+      }
+    };
+
+    selectJenjang.addEventListener("change", async () => {
+      selectTingkat.innerHTML = '<option value="">Semua Tingkat</option>';
+      selectTingkat.disabled = true;
+      selectKelas.innerHTML = '<option value="">Semua Kelas</option>';
+      selectKelas.disabled = true;
+
+      if (selectJenjang.value) {
+        const response = await api.get(
+          `${API_URL.GET_TINGKAT}?jenjang_id=${selectJenjang.value}`
+        );
+        if (response.data.success)
+          populateSelect(selectTingkat, response.data.data, "Semua Tingkat");
+      }
+    });
+
+    selectTingkat.addEventListener("change", async () => {
+      selectKelas.innerHTML = '<option value="">Semua Kelas</option>';
+      selectKelas.disabled = true;
+
+      if (selectTingkat.value) {
+        const response = await api.get(
+          `${API_URL.GET_KELAS}?tingkat_id=${selectTingkat.value}`
+        );
+        if (response.data.success)
+          populateSelect(selectKelas, response.data.data, "Semua Kelas");
+      }
+    });
+
+    const observer = new MutationObserver(() => {
+      if (!filterModal.classList.contains("hidden")) loadFilterJenjang();
+    });
+    observer.observe(filterModal, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    document
+      .getElementById(EL_IDS.APPLY_FILTER_BTN)
+      .addEventListener("click", applyFiltersAndReload);
+    document
+      .getElementById(EL_IDS.RESET_FILTER_BTN)
+      .addEventListener("click", resetFiltersAndReload);
   });
 
-  const alwaysRequiredFields = [
-    "edit-nis",
-    "edit-name",
-    "edit-parent-phone",
-    "edit-level",
-    "edit-grade",
-    "edit-monthly-fee",
-  ];
-  let missingField = false;
-  let firstMissingFieldName = "";
-  for (const fieldName of alwaysRequiredFields) {
-    const value = dataToSend[fieldName];
-    if (!value || (typeof value === "string" && value.trim() === "")) {
-      const fieldElement = form.querySelector(`[name="${fieldName}"]`);
-      const label = fieldElement?.labels?.[0]?.textContent || fieldName;
-      firstMissingFieldName = label.replace(":", "").replace("*", "").trim();
-      missingField = true;
-      break;
-    }
-  }
-  if (missingField) {
-    alert(`Error: Field "${firstMissingFieldName}" wajib diisi.`);
-    return;
-  }
-
-  submitButton.disabled = true;
-  submitButton.textContent = "Processing...";
-  submitButton.classList.remove("cursor-pointer");
-  submitButton.classList.add("cursor-progress");
-  console.log(
-    "Submitting Edit Form Data (JSON) to:",
-    url,
-    JSON.stringify(dataToSend, null, 2)
-  );
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(dataToSend),
-    });
-    const result = await response.json();
-    if (!response.ok) {
-      console.error("Server Error:", response.status, result);
-      throw new Error(result.message || `Error ${response.status}`);
-    }
-    alert(result.message || "Data siswa berhasil diperbarui!");
-    closeModal("edit-student");
-    console.info(result);
-    location.reload();
-  } catch (error) {
-    console.error("Fetch Error:", error);
-    alert(`Terjadi kesalahan: ${error.message}`);
-  } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = originalButtonText;
-    submitButton.classList.add("cursor-pointer");
-    submitButton.classList.remove("cursor-progress");
-  }
-}
-
-async function setMonthlyFee(
-  levelSelectFilter,
-  gradeSelectFilter,
-  sectionSelectFilter
-) {
-  input = document.getElementById("edit-monthly-fee");
-  try {
-    const responseData = await getClassesData(
-      levelSelectFilter,
-      gradeSelectFilter,
-      sectionSelectFilter
-    );
-    console.log(levelSelectFilter, gradeSelectFilter, sectionSelectFilter);
-    console.log(responseData);
-    if (levelSelectFilter) {
-      input.value = 0.0;
-    }
-    if (gradeSelectFilter) {
-      detail = responseData.grades.find(
-        (grade) => grade.id == gradeSelectFilter
-      );
-      input.value = detail.base_fee;
-    }
-    if (sectionSelectFilter) {
-      detail = responseData.sections.find(
-        (section) => section.id == sectionSelectFilter
-      );
-      input.value = detail.base_fee;
-    }
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("DOM Loaded! Initializing script...");
-  const createStudentModal = document.getElementById("create-student");
-  const editStudentModal = document.getElementById("edit-student");
-  const bulkEditStudentForm = document.getElementById("update-student-form");
-  const filterStudentModal = document.getElementById("filter-student");
-  if (createStudentModal) {
-    const levelSelectCreate = createStudentModal.querySelector("#level");
-    const gradeSelectCreate = createStudentModal.querySelector("#grade");
-    const sectionSelectCreate = createStudentModal.querySelector("#section");
-    const createForm = createStudentModal.querySelector("#create-student-form");
-    if (levelSelectCreate && gradeSelectCreate && sectionSelectCreate) {
-      populateLevels(levelSelectCreate, gradeSelectCreate, sectionSelectCreate);
-      levelSelectCreate.addEventListener("change", (event) => {
-        populateGrades(
-          event.target.value,
-          levelSelectCreate,
-          gradeSelectCreate,
-          sectionSelectCreate
-        );
-      });
-      gradeSelectCreate.addEventListener("change", (event) => {
-        const selectedLevelId = levelSelectCreate.value;
-        populateSections(
-          selectedLevelId,
-          event.target.value,
-          gradeSelectCreate,
-          sectionSelectCreate
-        );
-      });
-    }
-    if (createForm) {
-      createForm.addEventListener("submit", submitStudent);
-    }
-  }
-  if (editStudentModal) {
-    const levelSelectEdit = editStudentModal.querySelector("#edit-level");
-    const gradeSelectEdit = editStudentModal.querySelector("#edit-grade");
-    const sectionSelectEdit = editStudentModal.querySelector("#edit-section");
-    if (levelSelectEdit && gradeSelectEdit && sectionSelectEdit) {
-      levelSelectEdit.addEventListener("change", (event) => {
-        populateGrades(
-          event.target.value,
-          levelSelectEdit,
-          gradeSelectEdit,
-          sectionSelectEdit
-        );
-        setMonthlyFee(
-          levelSelectEdit.value,
-          gradeSelectEdit.value,
-          sectionSelectEdit.value
-        );
-      });
-      gradeSelectEdit.addEventListener("change", (event) => {
-        const selectedLevelId = levelSelectEdit.value;
-        populateSections(
-          selectedLevelId,
-          event.target.value,
-          gradeSelectEdit,
-          sectionSelectEdit
-        );
-        setMonthlyFee(
-          levelSelectEdit.value,
-          gradeSelectEdit.value,
-          sectionSelectEdit.value
-        );
-      });
-      sectionSelectEdit.addEventListener("change", () => {
-        setMonthlyFee(
-          levelSelectEdit.value,
-          gradeSelectEdit.value,
-          sectionSelectEdit.value
-        );
-      });
-    }
-  }
-
-  if (filterStudentModal) {
-    const levelSelectFilter = filterStudentModal.querySelector("#level-filter");
-    const gradeSelectFilter = filterStudentModal.querySelector("#grade-filter");
-    const sectionSelectFilter =
-      filterStudentModal.querySelector("#section-filter");
-    if (levelSelectFilter && gradeSelectFilter && sectionSelectFilter) {
-      populateLevels(levelSelectFilter, gradeSelectFilter, sectionSelectFilter);
-      levelSelectFilter.addEventListener("change", (event) => {
-        populateGrades(
-          event.target.value,
-          levelSelectFilter,
-          gradeSelectFilter,
-          sectionSelectFilter
-        );
-      });
-      gradeSelectFilter.addEventListener("change", (event) => {
-        const selectedLevelId = levelSelectFilter.value;
-        populateSections(
-          selectedLevelId,
-          event.target.value,
-          gradeSelectFilter,
-          sectionSelectFilter
-        );
-      });
-    }
-  }
-
-  if (bulkEditStudentForm) {
-    bulkEditStudentForm.addEventListener("submit", submitUpdateStudents);
-  }
-});
+  /**
+   * Mengekspos fungsi yang perlu dipanggil dari luar (misal: dari HTML `onclick`).
+   */
+  window.pages = window.pages || {};
+  window.pages.students = {
+    openEditStudentModal,
+    handleDeleteStudent,
+    loadStudentsData,
+  };
+})();

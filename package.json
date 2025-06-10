@@ -1,0 +1,18 @@
+{
+  "name": "nusput-billing",
+  "version": "1.0.0",
+  "description": "Sistem Pembayaran Nusaputera",
+  "main": "app.js",
+  "scripts": {
+    "test": "node public/js/app.js",
+    "dev": "npx @tailwindcss/cli -i ./public/css/main.css -o ./public/css/style.css --watch"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.1.8"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.1.8"
+  }
+}

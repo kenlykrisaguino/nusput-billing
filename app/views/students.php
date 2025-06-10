@@ -1,392 +1,322 @@
-<div class="w-full">
-    <form action="" method="get" class="flex justify-between w-full mb-2">
-        <h1 class="text-lg font-semibold text-slate-800">List Siswa</h1>
-        <div class="flex gap-2">
-            <div onclick="document.getElementById('create-student').classList.remove('hidden')"
-                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
-                Tambah Siswa</div>
-            <div onclick="document.getElementById('update-students').classList.remove('hidden')"
-                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
-                Update Siswa</div>
-            <a href="/exports/students"
-                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
-                Export</a>
-            <div>
-                <label for="search" class="mb-2 text-xs font-medium text-blue-900 sr-only">Search</label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                        <svg class="w-2 h-2 text-blue-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"
-                            fill="none" viewBox="0 0 20 20">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z" />
-                        </svg>
-                    </div>
-                    <input type="search" id="search" name="search"
-                        value="<?= htmlspecialchars($_GET['search'] ?? '') ?>"
-                        class="block w-full px-2 py-1 ps-7 text-xs rounded-md text-blue-900 border border-blue-700 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Search Students" />
-                    <button type="submit"
-                        class="text-white absolute end-0.5 bottom-0.5 bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-md text-xs px-2 py-1">Search</button>
-                </div>
+<main x-data="{
+    isMobile: window.innerWidth < 768,
+    sidebarOpen: true,
+    init() {
+        this.sidebarOpen = !this.isMobile;
+        window.addEventListener('resize', () => {
+            const stillMobile = window.innerWidth < 768;
+            if (this.isMobile && !stillMobile) {
+                this.sidebarOpen = true;
+            } else if (!this.isMobile && stillMobile && this.sidebarOpen) {
+                this.sidebarOpen = false;
+            }
+            this.isMobile = stillMobile;
+        });
+    }
+}"
+    @toggle-sidebar.window="if(isMobile) sidebarOpen = !sidebarOpen; else sidebarOpen = !sidebarOpen"
+    class="flex flex-grow overflow-hidden h-full">
+
+    <div x-show="sidebarOpen && isMobile" @click="sidebarOpen = false" class="fixed inset-0 bg-black/50 z-30 md:hidden"
+        x-transition:enter="transition-opacity ease-linear duration-300" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100" x-transition:leave="transition-opacity ease-linear duration-300"
+        x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+    </div>
+
+    <div x-show="sidebarOpen || !isMobile"
+        :class="{
+            '-translate-x-full': !sidebarOpen && isMobile,
+            'translate-x-0 h-full': sidebarOpen && isMobile,
+            'lg:w-1/6 md:w-2/6 sm:w-1/2': sidebarOpen && !isMobile,
+            'md:w-20': !sidebarOpen && !isMobile,
+            'w-3/4 sm:w-2/3': isMobile && sidebarOpen,
+            'w-0 p-0': !sidebarOpen && isMobile
+        }"
+        class="bg-sky-600 z-40 transition-all duration-300 ease-in-out flex flex-col
+               fixed md:relative top-0 left-0
+               md:flex-shrink-0"
+        :style="(!sidebarOpen && isMobile) ? 'padding: 0;' : 'padding: 1rem;'">
+
+        <button x-show="sidebarOpen || !isMobile" @click="sidebarOpen = !sidebarOpen"
+            :class="{
+                'absolute top-3 right-3': sidebarOpen,
+                'self-center mb-3': !sidebarOpen && !isMobile,
+                'hidden': !sidebarOpen && isMobile
+            }"
+            class="bg-sky-700 hover:bg-sky-800 text-white rounded-full w-8 h-8 flex items-center justify-center focus:outline-none shadow-md cursor-pointer">
+            <i x-show="sidebarOpen" class="ti ti-chevron-left text-base"></i>
+            <i x-show="!sidebarOpen && !isMobile" class="ti ti-chevron-right text-base"></i>
+        </button>
+
+        <div x-show="sidebarOpen || (!sidebarOpen && !isMobile)" class="overflow-y-auto flex-grow pt-10 md:pt-0">
+            <div x-show="sidebarOpen" class="flex items-center mb-6 mt-1"
+                :class="{ 'mr-6': sidebarOpen && !isMobile, 'mr-10': sidebarOpen && isMobile }">
+                <h3 class="text-white font-semibold transition-opacity duration-200">Quick Access</h3>
             </div>
-            <div onclick="document.getElementById('filter-student').classList.remove('hidden')"
-                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
-                Filter</div>
-            <div id="filter-student" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-                <div class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
-                    <h3 class="text-sm font-bold mb-2 text-slate-700">Filter Siswa</h3>
-    
-                    <div class="mb-2">
-                        <label for="level-filter" class="text-xs font-semibold uppercase">jenjang</label>
-                        <select name="level-filter" id="level-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Jenjang</option>
-                        </select>
+            <div :class="sidebarOpen ? '' : 'mt-2'" class="flex flex-col gap-2 text-slate-50">
+                <div x-show="sidebarOpen" class="flex gap-2 items-center mb-2">
+                    <h4 class="text-xs uppercase">student actions</h4>
+                    <div class="flex-1">
+                        <hr class="text-white">
                     </div>
-                    <div class="mb-2">
-                        <label for="grade-filter" class="text-xs font-semibold uppercase">tingkat</label>
-                        <select name="grade-filter" id="grade-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Tingkat</option>
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <label for="section-filter" class="text-xs font-semibold uppercase">kelas</label>
-                        <select name="section-filter" id="section-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Kelas</option>
-                        </select>
-                    </div>
-                    <button type="submit"
-                        class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                        Filter
-                    </button>
-    
-                    <button onclick="closeModal('filter-student')" type="button"
-                        class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                        Batal
-                    </button>
                 </div>
+                <div x-show="!sidebarOpen && !isMobile" class="flex justify-center mb-2"><i
+                        class="ti ti-users text-white text-xl"></i></div>
+                <div @click="document.getElementById('create-student-modal').classList.remove('hidden')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Siswa'"><i
+                        class="ti ti-user-plus text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Tambah Siswa</span></div>
+                <div @click="document.getElementById('update-students-modal').classList.remove('hidden')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Update Semua Siswa'"><i
+                        class="ti ti-refresh-dot text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Update Semua Siswa</span></div>
+                <a href="/exports/students" :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Export Siswa'"><i
+                        class="ti ti-file-export text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Export Siswa</span></a>
+                <div x-show="sidebarOpen" class="flex gap-2 items-center mb-2 mt-4">
+                    <h4 class="text-xs uppercase">class actions</h4>
+                    <div class="flex-1">
+                        <hr class="text-white">
+                    </div>
+                </div>
+                <div x-show="!sidebarOpen && !isMobile" class="flex justify-center mb-2 mt-4"><i
+                        class="ti ti-school text-white text-xl"></i></div>
+                <div @click="$dispatch('open-create-level-modal')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Jenjang'"><i
+                        class="ti ti-stairs-up text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Tambah Jenjang</span></div>
+                <div @click="$dispatch('open-create-grade-modal')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Tingkat'"><i
+                        class="ti ti-layers-subtract text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Tambah Tingkat</span></div>
+                <div @click="$dispatch('open-create-class-modal')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Kelas'"><i
+                        class="ti ti-chalkboard text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Tambah Kelas</span></div>
             </div>
         </div>
-    </form>
-
-    <hr class="mb-2">
-
-    <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
-        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                <tr>
-                    <th scope="col" class="px-6 py-3">Aksi</th>
-                    <th scope="col" class="px-6 py-3">Siswa</th>
-                    <th scope="col" class="px-6 py-3">SPP</th>
-                    <th scope="col" class="px-6 py-3">Jenjang</th>
-                    <th scope="col" class="px-6 py-3">Kontak</th>
-                    <th scope="col" class="px-6 py-3">Kontak Orang Tua</th>
-                    <th scope="col" class="px-6 py-3">Virtual Account</th>
-                    <th scope="col" class="px-6 py-3">Pembayaran Terakhir</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php
-                use App\Helpers\FormatHelper;
-                $students = $this->studentBE->getStudents();
-                ?>
-                <?php if (count($students) > 0) : ?>
-                <?php foreach($students as $student) :?>
-                <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
-                    <td class="px-6 py-4 flex gap-2">
-                        <?php if(!isset($student['date_left'])): ?>
-                            <i class="fa-solid fa-pencil cursor-pointer hover:text-blue-300 transition-colors"
-                                onclick="editStudent('<?= htmlspecialchars($student['id']) ?>')"></i>
-                        <?php endif ?>
-                    </td>
-                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
-                        <?= htmlspecialchars($student['name']) ?>
-                        <div class="text-xs text-blue-500"><?= htmlspecialchars($student['nis']) ?></div>
-                    </th>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <?= FormatHelper::formatRupiah($student['monthly_fee']) ?>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <?= htmlspecialchars($student['level'] ?? '') ?>
-                        <?= htmlspecialchars($student['grade'] ?? '') ?>
-                        <?= htmlspecialchars($student['section'] ?? '') ?>
-                    </td>
-                    <td class="px-6 py-4">
-                        <?= htmlspecialchars(isset($student['phone']) && $student['phone'] ? $student['phone'] : $student['email'] ?? '') ?>
-                    </td>
-                    <td class="px-6 py-4">
-                        <?= htmlspecialchars($student['parent_phone'] ?? '') ?>
-                    </td>
-                    <td class="px-6 py-4">
-                        <?= htmlspecialchars($student['virtual_account'] ?? '') ?>
-                    </td>
-                    <td class="px-6 py-4">
-                        <?= htmlspecialchars($student['latest_payment'] ?? '-') ?>
-                    </td>
-                </tr>
-                <?php endforeach;?>
-                <?php else :?>
-                <tr>
-                    <td class="px-6 py-4 text-center" colspan="8">
-                        Data siswa kosong.
-                    </td>
-                </tr>
-                <?php endif;?>
-            </tbody>
-        </table>
     </div>
 
-    <div id="create-student" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-        <form method="post" id="create-student-form"
-            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
-            <h3 class="text-sm font-bold mb-2 text-slate-700">Tambah Siswa</h3>
+    <div class="flex-grow bg-slate-200 overflow-y-auto main-content-shifted"
+        :class="{
+            'md:pl-4': sidebarOpen && !isMobile,
+            'md:pl-8': !sidebarOpen && !isMobile,
+            'pl-0': isMobile
+        }">
+        <div class="px-6 md:px-10 py-6 flex-1">
+            <div class="w-full flex gap-4 flex-col">
+                <section id="students">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-semibold text-xl text-slate-700">Student Management</h3>
+                        <div class="flex items-center gap-2">
+                            <button @click="document.getElementById('filter-student-modal').classList.remove('hidden')"
+                                title="Filter Siswa"
+                                class="text-slate-500 hover:text-sky-600 transition-colors p-1.5 rounded-md hover:bg-sky-100">
+                                <i class="ti ti-filter text-xl"></i>
+                            </button>
+                            <button @click="document.getElementById('create-student-modal').classList.remove('hidden')"
+                                class="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
+                                <i class="ti ti-user-plus"></i>
+                                Tambah Siswa
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg mt-4 relative overflow-x-auto shadow">
+                        <table id="student-table" class="w-full text-sm text-left rtl:text-right text-gray-700">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3">Actions</th>
+                                    <th class="px-4 py-3">Name</th>
+                                    <th class="px-4 py-3">Class</th>
+                                    <th class="px-4 py-3">Virtual Account</th>
+                                    <th class="px-4 py-3">Monthly Bills</th>
+                                    <th class="px-4 py-3">Last Payment</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php use App\Helpers\FormatHelper;
+                                $students = $data['students'] ?? ($app->StudentBE()->getStudents() ?? []); ?>
+                                <?php if (count($students) > 0) : ?><?php foreach($students as $student) :?>
+                                <tr
+                                    class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
+                                    <td class="px-4 py-2 flex gap-2 items-center">
+                                        <button
+                                            onclick="pages.students.openEditStudentModal('<?= htmlspecialchars($student['id'] ?? '') ?>')"
+                                            title="Edit Siswa" class="text-sky-600 hover:text-sky-800"><i
+                                                class="ti ti-pencil"></i></button>
+                                        <button
+                                            onclick="pages.students.handleDeleteStudent('<?= htmlspecialchars($student['id'] ?? '') ?>', '<?= htmlspecialchars(addslashes($student['nama'] ?? '')) ?>')"
+                                            title="Hapus Siswa" class="text-red-500 hover:text-red-700"><i
+                                                class="ti ti-trash"></i></button>
+                                    </td>
+                                    <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['nama'] ?? '') ?><div
+                                            class="text-xs text-slate-500 font-normal">
+                                            <?= htmlspecialchars($student['nis'] ?? '') ?></div>
+                                    </th>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['jenjang'] ?? '') ?>
+                                        <?= htmlspecialchars($student['tingkat'] ?? '') ?>
+                                        <?= htmlspecialchars($student['kelas'] ?? '') ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['va'] ?? '') ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= FormatHelper::formatRupiah($student['spp'] ?? 0) ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['latest_payment'] ?? '-') ?></td>
+                                </tr><?php endforeach;?><?php else :?><tr>
+                                    <td class="px-4 py-2 text-center text-gray-500" colspan="6">Belum ada data
+                                        siswa.</td>
+                                </tr><?php endif;?>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
 
-            <div class="border-b border-slate-600 pb-2 mb-4">
-                <label for="bulk-students" class="mb-1 block text-xs font-medium text-slate-700">Upload file</label>
-                <input name="bulk-students" id="bulk-students" type="file" accept=".xlsx"
-                    class="mt-2 block w-full text-xs file:mr-4 file:rounded-md file:border-0 file:bg-blue-500 file:py-1 file:px-2 file:text-xs file:font-medium file:text-white hover:file:bg-blue-700 focus:outline-none disabled:pointer-events-none disabled:opacity-60" />
-                <small class="text-slate-400 text-xs italic">Format Excel Tambah Siswa dapat diunduh <a
-                        class="text-blue-400 hover:text-blue-500" href="/format?type=student">disini</a></small>
+                <section id="classes" class="mt-8">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-semibold text-xl text-slate-700">Tariff Management</h3>
+                        <div class="flex items-center gap-2">
+                            <button @click="$dispatch('open-create-tariff-modal')"
+                                class="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
+                                <i class="ti ti-receipt-2"></i>
+                                Tambah Tarif
+                            </button>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg mt-4 relative overflow-x-auto shadow">
+                        <table id="class-table" class="w-full text-sm text-left rtl:text-right text-gray-700">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3">Actions</th>
+                                    <th class="px-4 py-3">Jenjang</th>
+                                    <th class="px-4 py-3">Tingkat</th>
+                                    <th class="px-4 py-3">Kelas</th>
+                                    <th class="px-4 py-3">Nominal Tarif SPP</th>
+                                    <th class="px-4 py-3">Digunakan oleh</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php $tariffs = $app->ClassBE()->getTariffList() ?? []; ?>
+                                <?php if (count($tariffs) > 0) : ?><?php foreach($tariffs as $tariff) :?>
+                                <tr
+                                    class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
+                                    <td class="px-4 py-2 flex gap-2 items-center">
+                                        <button type="button"
+                                            class="text-sky-600 hover:text-sky-800 cursor-pointer edit-tariff-btn"
+                                            onclick="window.dispatchEvent(new CustomEvent('open-edit-tariff-modal', { detail: { tariffId: <?= htmlspecialchars($tariff['id'] ?? 0) ?> } }))"
+                                            title="Edit Tarif">
+                                            <i class="ti ti-pencil"></i>
+                                        </button>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($tariff['jenjang'] ?? '-') ?></th>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($tariff['tingkat'] ?? '-') ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($tariff['kelas'] ?? 'Semua Kelas') ?></td>
+                                    <td class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                                        <?= \App\Helpers\FormatHelper::formatRupiah($tariff['nominal'] ?? 0) ?>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($tariff['jumlah_siswa'] ?? 0) ?> siswa</td>
+                                </tr>
+                                <?php endforeach;?><?php else :?>
+                                <tr>
+                                    <td class="px-4 py-2 text-center text-gray-500" colspan="6">Belum ada data
+                                        tarif.</td>
+                                </tr>
+                                <?php endif;?>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
-
-            <div class="grid grid-cols-6 gap-2 mb-8">
-                <div class="col-span-2">
-                    <label for="nis" class="text-xs font-semibold uppercase">nis <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <input type="text" name="nis" id="nis"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-4">
-                    <label for="name" class="text-xs font-semibold uppercase">nama <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <input type="text" name="name" id="name"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-6">
-                    <label for="dob" class="text-xs font-semibold uppercase">tanggal lahir</label>
-                    <input type="date" name="dob" id="dob"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-3">
-                    <label for="phone_number" class="text-xs font-semibold uppercase">nomor telepon</label>
-                    <input type="tel" name="phone" id="phone_number"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-3">
-                    <label for="email_address" class="text-xs font-semibold uppercase">alamat email</label>
-                    <input type="email" name="email" id="email_address"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-6">
-                    <label for="parent_phone" class="text-xs font-semibold uppercase">telepon orang tua <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <input type="tel" name="parent_phone" id="parent_phone"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-6">
-                    <label for="address" class="text-xs font-semibold uppercase">alamat rumah</label>
-                    <textarea name="address" id="address"
-                        class="resize-none block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100"></textarea>
-                </div>
-                <div class="col-span-2">
-                    <label for="level" class="text-xs font-semibold uppercase">jenjang <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <select name="level" id="level"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                        <option value="" selected disabled>Pilih Jenjang</option>
-                    </select>
-                </div>
-                <div class="col-span-2">
-                    <label for="grade" class="text-xs font-semibold uppercase">tingkat <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <select name="grade" id="grade"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                        <option value="" selected disabled>Pilih Tingkat</option>
-                    </select>
-                </div>
-                <div class="col-span-2">
-                    <label for="section" class="text-xs font-semibold uppercase">kelas</label>
-                    <select name="section" id="section"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                        <option value="" selected>-- Tidak Ada Kelas --</option>
-                    </select>
-                </div>
-            </div>
-
-            <button type="submit"
-                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                Tambah
-            </button>
-
-            <button onclick="closeModal('create-student')" type="button"
-                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                Batal
-            </button>
-        </form>
+        </div>
     </div>
+</main>
 
-    <div id="update-students" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-        <form method="post" id="update-student-form"
-            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
-            <h3 class="text-sm font-bold mb-2 text-slate-700">Update Siswa</h3>
+<?php include_once __DIR__ . '/modals/student-create.php'; ?>
+<?php include_once __DIR__ . '/modals/student-update-bulk.php'; ?>
+<?php include_once __DIR__ . '/modals/student-filter.php'; ?>
+<?php include_once __DIR__ . '/modals/student-edit.php'; ?>
+<?php include_once __DIR__ . '/modals/level-create.php'; ?>
+<?php include_once __DIR__ . '/modals/grade-create.php'; ?>
+<?php include_once __DIR__ . '/modals/class-create.php'; ?>
+<?php include_once __DIR__ . '/modals/tariff-create.php'; ?>
 
-            <div class="border-b border-slate-600 pb-2 mb-4">
-                <label for="bulk-update-students" class="mb-1 block text-xs font-medium text-slate-700">Upload file</label>
-                <input name="bulk-update-students" id="bulk-update-students" type="file" accept=".xlsx"
-                    class="mt-2 block w-full text-xs file:mr-4 file:rounded-md file:border-0 file:bg-blue-500 file:py-1 file:px-2 file:text-xs file:font-medium file:text-white hover:file:bg-blue-700 focus:outline-none disabled:pointer-events-none disabled:opacity-60" />
-                <small class="text-slate-400 text-xs italic">Data siswa saat ini dapat diunduh di <a
-                        class="text-blue-400 hover:text-blue-500" href="/exports/students">disini</a></small>
-            </div>
-
-            <button type="submit"
-                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                Update
-            </button>
-
-            <button onclick="closeModal('update-students')" type="button"
-                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                Batal
-            </button>
-        </form>
-    </div>
-
-    <div id="edit-student" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-        <form method="POST" id="edit-student-form"
-            class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
-            <input type="hidden" name="user_id" id="edit-user-id">
-            <div class="flex justify-between mb-4">
-                <h3 class="text-sm font-bold text-slate-700">Edit Siswa</h3>
-                <div id="tabs" class="flex gap-4">
-                    <button type="button"
-                        class="cursor-pointer uppercase tab-button px-2 py-1 text-xs font-semibold text-slate-600 border-b-2 border-blue-600"
-                        onclick="showEditTab('information', this)">Informasi</button>
-                    <button type="button"
-                        class="cursor-pointer uppercase tab-button px-2 py-1 text-xs font-semibold text-slate-600 border-b-2 border-transparent"
-                        onclick="showEditTab('bill', this)">Kelas dan Tagihan</button>
-                </div>
-            </div>
-            <div id="information-tab" class="tab-content grid grid-cols-6 gap-2 mb-8">
-                <div class="col-span-2">
-                    <label for="edit-nis" class="text-xs font-semibold uppercase">nis <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <input type="text" name="edit-nis" id="edit-nis"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-4">
-                    <label for="edit-name" class="text-xs font-semibold uppercase">nama <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <input type="text" name="edit-name" id="edit-name"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-6">
-                    <label for="edit-dob" class="text-xs font-semibold uppercase">tanggal lahir</label>
-                    <input type="date" name="edit-dob" id="edit-dob"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-3">
-                    <label for="edit-phone-number" class="text-xs font-semibold uppercase">nomor telepon</label>
-                    <input type="tel" name="edit-phone-number" id="edit-phone-number"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-3">
-                    <label for="edit-email-address" class="text-xs font-semibold uppercase">alamat email</label>
-                    <input type="email" name="edit-email-address" id="edit-email-address"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-6">
-                    <label for="edit-parent-phone" class="text-xs font-semibold uppercase">telepon orang tua <span
-                            class="text-red-600 font-bold">*</span></label>
-                    <input type="tel" name="edit-parent-phone" id="edit-parent-phone"
-                        class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                </div>
-                <div class="col-span-6">
-                    <label for="edit-address" class="text-xs font-semibold uppercase">alamat rumah</label>
-                    <textarea name="edit-address" id="edit-address"
-                        class="resize-none block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100"></textarea>
-                </div>
-            </div>
-            <div id="bill-tab" class="tab-content mb-8 hidden">
-                <div class="grid grid-cols-6 gap-2 pb-4 border-b border-slate-500">
-                    <div class="col-span-2">
-                        <label for="edit-level" class="text-xs font-semibold uppercase">jenjang <span
-                                class="text-red-600 font-bold">*</span></label>
-                        <select name="edit-level" id="edit-level"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Jenjang</option>
-                        </select>
-                    </div>
-                    <div class="col-span-2">
-                        <label for="edit-grade" class="text-xs font-semibold uppercase">tingkat <span
-                                class="text-red-600 font-bold">*</span></label>
-                        <select name="edit-grade" id="edit-grade"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Tingkat</option>
-                        </select>
-                    </div>
-                    <div class="col-span-2">
-                        <label for="edit-section" class="text-xs font-semibold uppercase">kelas</label>
-                        <select name="edit-section" id="edit-section"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected>-- Tidak Ada Kelas --</option>
-                        </select>
-                    </div>
-                    <div class="col-span-6">
-                        <label for="edit-monthly-fee" class="text-xs font-semibold uppercase">spp bulanan <span
-                                class="text-red-600 font-bold">*</span></label>
-                        <input type="number" step="any" name="edit-monthly-fee" id="edit-monthly-fee"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                    </div>
-                </div>
-                <div class="grid grid-cols-6 gap-2 pt-2">
-                    <div class="col-span-2">
-                        <label for="edit-academic-year" class="text-xs font-semibold uppercase">tahun ajaran</label>
-                        <select name="edit-academic-year" id="edit-academic-year"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih tahun</option>
-                        </select>
-                    </div>
-                    <div class="col-span-2">
-                        <label for="edit-semester" class="text-xs font-semibold uppercase">semester</label>
-                        <select name="edit-semester" id="edit-semester"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Semester</option>
-                        </select>
-                    </div>
-                    <div class="col-span-2">
-                        <label for="edit-month" class="text-xs font-semibold uppercase">bulan</label>
-                        <select name="edit-month" id="edit-month"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Bulan</option>
-                        </select>
-                    </div>
-                    <div class="col-span-6 flex justify-between mt-2 items-center">
-                        <h4 class="text-xs uppercase font-semibold text-slate-600">Biaya Tambahan</h4>
-                        <button type="button" title="Tambah Biaya Baru" onclick="addNewFeeRow()"
-                            class="cursor-pointer text-blue-500 hover:text-blue-700 transition-colors">
-                            <i class="fa-solid fa-plus text-sm"></i>
-                        </button>
-                    </div>
-                    <div id="additional-fees-container"
-                        class="col-span-6 mt-1 space-y-1 border-t border-slate-200 pt-2">
-                        <p class="text-xs text-slate-500 italic">Pilih Tahun Ajaran, Semester, dan Bulan untuk
-                            melihat/mengedit biaya tambahan.</p>
-                    </div>
-                </div>
-            </div>
-
-            <button onclick="submitEditStudent(this)" type="button"
-                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                Edit
-            </button>
-
-            <button onclick="closeModal('edit-student')" type="button"
-                class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                Batal
-            </button>
-        </form>
+<div id="filter-class-modal"
+    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[100]">
+    <div
+        class="relative top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium">Filter Kelas</h3><button
+                onclick="document.getElementById('filter-class-modal').classList.add('hidden')"
+                class="text-gray-400 hover:text-gray-600"><i class="ti ti-x text-xl"></i></button>
+        </div>
+        <p>Formulir filter kelas...</p>
+        <div class="flex justify-end mt-6"><button
+                onclick="document.getElementById('filter-class-modal').classList.add('hidden')"
+                class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 mr-2">Tutup</button><button
+                class="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700">Terapkan Filter</button></div>
     </div>
 </div>
 
+<script src="/js/flowbite.min.js"></script>
+<script src="/js/datatables.js"></script>
 <script src="/js/pages/students.js"></script>
+<script type="module">
+    const DataTable = window.simpleDatatables.DataTable;
+    const studentTableElement = document.getElementById("student-table");
+    if (studentTableElement) {
+        new DataTable(studentTableElement, {
+            paging: true,
+            perPage: 10,
+            perPageSelect: [5, 10, 15, 20, 25, 50],
+            searchable: true,
+            sortable: true,
+            filter: true,
+            labels: {
+                placeholder: "Cari siswa...",
+                perPage: "{select} siswa per halaman",
+                noRows: "Tidak ada data siswa ditemukan",
+                info: "Menampilkan {start} sampai {end} dari {rows} siswa"
+            }
+        });
+    }
+    const classTableElement = document.getElementById("class-table");
+    if (classTableElement) {
+        new DataTable(classTableElement, {
+            paging: true,
+            perPage: 5,
+            perPageSelect: [5, 10, 15, 20, 25],
+            searchable: true,
+            sortable: true,
+            filter: true,
+            labels: {
+                placeholder: "Cari kelas...",
+                perPage: "{select} kelas per halaman",
+                noRows: "Tidak ada data kelas ditemukan",
+                info: "Menampilkan {start} sampai {end} dari {rows} kelas"
+            }
+        });
+    }
+</script>
