@@ -32,7 +32,6 @@
                         class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium">
                     Batal
                 </button>
-                <!-- Tombol submit sekarang menampilkan status 'isSaving' -->
                 <button type="submit" :disabled="isSaving"
                         class="px-6 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 text-sm font-medium flex items-center justify-center w-32">
                     <span x-show="!isSaving">Simpan Jenjang</span>

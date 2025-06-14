@@ -1,5 +1,5 @@
-<div id="create-student-modal" x-data="{ activeTab: 'manualForm' }"
-    @modal-opened.window="if ($event.detail.modalId === 'create-student-modal' && $event.detail.initialTab) activeTab = $event.detail.initialTab; else activeTab = 'manualForm';"
+<div id="create-student-modal" x-data="{ activeTab: 'bulkUpload' }"
+    @modal-opened.window="if ($event.detail.modalId === 'create-student-modal' && $event.detail.initialTab) activeTab = $event.detail.initialTab; else activeTab = 'bulkUpload';"
     class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-[100]">
     <div
         class="relative top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 py-6 px-8 border w-11/12 md:w-2/3 lg:w-1/2 max-w-4xl shadow-xl rounded-lg bg-white">
@@ -13,16 +13,17 @@
 
         <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
             <nav class="flex -mb-px space-x-6 sm:space-x-8" aria-label="Tabs">
-                <button @click="activeTab = 'manualForm'"
-                    :class="{ 'border-sky-500 text-sky-600': activeTab === 'manualForm', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'manualForm' }"
-                    class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none">
-                    Isi Form Manual
-                </button>
                 <button @click="activeTab = 'bulkUpload'"
                     :class="{ 'border-sky-500 text-sky-600': activeTab === 'bulkUpload', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'bulkUpload' }"
                     class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none">
                     Upload File Excel (Bulk)
                 </button>
+                <button @click="activeTab = 'manualForm'"
+                    :class="{ 'border-sky-500 text-sky-600': activeTab === 'manualForm', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'manualForm' }"
+                    class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none">
+                    Isi Form Manual
+                </button>
+
             </nav>
         </div>
 
@@ -232,7 +233,7 @@
                 const response = await window.api.get(`/kelas?tingkat_id=${tingkatId}`);
                 if (response.data && response.data.success) {
                     populateSelect(selectKelas, response.data.data, 'Pilih Kelas');
-                    if(response.data.data.length == 0){
+                    if (response.data.data.length == 0) {
                         await fetchSppTarif();
                     }
                 }

@@ -15,19 +15,14 @@ class Database
      */
     public function __construct()
     {
-        $config = require __DIR__ . '/../../config/database.php';  
+        $config = require __DIR__ . '/../../config/database.php';
 
-        $this->connection = new mysqli(
-            $config['host'],
-            $config['username'],
-            $config['password'],
-            $config['database']
-        );
+        $this->connection = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
 
         if ($this->connection->connect_error) {
-            die("Connection failed: " . $this->connection->connect_error);
+            die('Connection failed: ' . $this->connection->connect_error);
         }
-        
+
         $this->connection->set_charset('utf8mb4');
     }
 
@@ -49,7 +44,7 @@ class Database
     {
         $stmt = $this->connection->prepare($sql);
         if (!$stmt) {
-            throw new Exception("Prepare failed: " . $this->connection->error . " | SQL: " . $sql);
+            throw new Exception('Prepare failed: ' . $this->connection->error . ' | SQL: ' . $sql);
         }
 
         if ($params) {
@@ -60,44 +55,66 @@ class Database
         $stmt->execute();
         return $stmt->get_result();
     }
-    
+
     /**
      * Mencari satu baris data dari sebuah tabel.
-     * Contoh: $db->find('siswa', ['id' => 1]);
+     * Contoh: $db->find('siswa', ['id' => 1], ['nama DESC', 'umur ASC']);
      */
-    public function find(string $table, array $where): ?array
+    public function find(string $table, array $where, array $orderBy = []): ?array
     {
         $whereParts = [];
-        foreach (array_keys($where) as $key) {
-            $whereParts[] = "`$key` = ?";
+        $params = [];
+
+        foreach ($where as $key => $value) {
+            if (is_null($value)) {
+                $whereParts[] = "`$key` IS NULL";
+            } else {
+                $whereParts[] = "`$key` = ?";
+                $params[] = $value;
+            }
         }
-        $sql = "SELECT * FROM `$table` WHERE " . implode(' AND ', $whereParts) . " LIMIT 1";
-        
-        $result = $this->query($sql, array_values($where));
+
+        $orderStr = '';
+        if (!empty($orderBy)) {
+            $orderStr = ' ORDER BY ' . implode(', ', $orderBy);
+        }
+
+        $sql = "SELECT * FROM `$table` WHERE " . implode(' AND ', $whereParts) . $orderStr . ' LIMIT 1';
+
+        $result = $this->query($sql, $params);
         return $result ? $this->fetchAssoc($result) : null;
     }
 
     /**
      * Mencari semua baris data dari sebuah tabel.
-     * Contoh: $db->findAll('siswa', ['kelas_id' => 5]);
+     * Contoh: $db->findAll('siswa', ['kelas_id' => 5], ['nama ASC']);
      */
-    public function findAll(string $table, array $where = []): array
+    public function findAll(string $table, array $where = [], array $orderBy = []): array
     {
         $sql = "SELECT * FROM `$table`";
         $params = [];
+
         if (!empty($where)) {
             $whereParts = [];
             foreach ($where as $key => $value) {
-                $whereParts[] = "`$key` = ?";
+                if (is_null($value)) {
+                    $whereParts[] = "`$key` IS NULL";
+                } else {
+                    $whereParts[] = "`$key` = ?";
+                    $params[] = $value;
+                }
             }
-            $sql .= " WHERE " . implode(' AND ', $whereParts);
-            $params = array_values($where);
+            $sql .= ' WHERE ' . implode(' AND ', $whereParts);
+        }
+
+        if (!empty($orderBy)) {
+            $sql .= ' ORDER BY ' . implode(', ', $orderBy);
         }
 
         $result = $this->query($sql, $params);
         return $this->fetchAll($result);
     }
-    
+
     /**
      * Mengambil satu baris dari hasil query.
      */
@@ -120,14 +137,16 @@ class Database
      */
     public function insert(string $table, array $data): int|bool
     {
-        if (empty($data)) return false;
+        if (empty($data)) {
+            return false;
+        }
 
         $isMulti = isset($data[0]) && is_array($data[0]);
         $dataToInsert = $isMulti ? $data : [$data];
 
         $columns = array_keys($dataToInsert[0]);
-        $columnSql = "`" . implode('`, `', $columns) . "`";
-        
+        $columnSql = '`' . implode('`, `', $columns) . '`';
+
         $rowPlaceholders = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
         $sql = "INSERT INTO `$table` ($columnSql) VALUES " . implode(', ', array_fill(0, count($dataToInsert), $rowPlaceholders));
 
@@ -137,28 +156,32 @@ class Database
                 $values[] = $row[$col] ?? null;
             }
         }
-        
+
         $stmt = $this->connection->prepare($sql);
-        if (!$stmt) throw new Exception("Prepare failed: " . $this->connection->error);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $this->connection->error);
+        }
 
         $types = str_repeat('s', count($values));
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
-        
+
         $affectedRows = $stmt->affected_rows;
         $lastId = $this->connection->insert_id;
         $stmt->close();
-        
+
         return $affectedRows > 0 ? ($isMulti ? $affectedRows : $lastId) : false;
     }
-    
+
     /**
      * Mengupdate data di tabel.
      * Contoh: $db->update('siswa', ['nama' => 'Budi Baik'], ['id' => 1]);
      */
     public function update(string $table, array $data, array $where): int
     {
-        if (empty($data) || empty($where)) return 0;
+        if (empty($data) || empty($where)) {
+            return 0;
+        }
 
         $setParts = [];
         $values = [];
@@ -172,11 +195,13 @@ class Database
             $whereParts[] = "`$key` = ?";
         }
         $values = array_merge($values, array_values($where));
-        
-        $sql = "UPDATE `$table` SET " . implode(', ', $setParts) . " WHERE " . implode(' AND ', $whereParts);
+
+        $sql = "UPDATE `$table` SET " . implode(', ', $setParts) . ' WHERE ' . implode(' AND ', $whereParts);
 
         $stmt = $this->connection->prepare($sql);
-        if (!$stmt) throw new Exception("Prepare failed: " . $this->connection->error);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $this->connection->error);
+        }
 
         $types = str_repeat('s', count($values));
         $stmt->bind_param($types, ...$values);
@@ -194,16 +219,20 @@ class Database
      */
     public function delete(string $table, array $where): int
     {
-        if (empty($where)) return 0;
+        if (empty($where)) {
+            return 0;
+        }
 
         $whereParts = [];
         foreach (array_keys($where) as $key) {
             $whereParts[] = "`$key` = ?";
         }
         $sql = "DELETE FROM `$table` WHERE " . implode(' AND ', $whereParts);
-        
+
         $stmt = $this->connection->prepare($sql);
-        if (!$stmt) throw new Exception("Prepare failed: " . $this->connection->error);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $this->connection->error);
+        }
 
         $types = str_repeat('s', count($where));
         $stmt->bind_param($types, ...array_values($where));
@@ -226,15 +255,24 @@ class Database
     /**
      * Memulai sebuah transaksi.
      */
-    public function beginTransaction(): void { $this->connection->begin_transaction(); }
+    public function beginTransaction(): void
+    {
+        $this->connection->begin_transaction();
+    }
 
     /**
      * Menyimpan semua perubahan dalam transaksi.
      */
-    public function commit(): void { $this->connection->commit(); }
+    public function commit(): void
+    {
+        $this->connection->commit();
+    }
 
     /**
      * Membatalkan semua perubahan dalam transaksi.
      */
-    public function rollback(): void { $this->connection->rollback(); }
+    public function rollback(): void
+    {
+        $this->connection->rollback();
+    }
 }

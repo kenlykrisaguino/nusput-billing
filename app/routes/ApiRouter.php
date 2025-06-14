@@ -2,6 +2,7 @@
 namespace App\Routes;
 
 use App\Helpers\ApiResponse;
+use App\Helpers\FormatHelper;
 
 class ApiRouter
 {
@@ -24,6 +25,9 @@ class ApiRouter
         $endpoint = array_shift($segments) ?? null;
 
         switch ($endpoint) {
+            case 'pw':
+                ApiResponse::success(FormatHelper::hashPassword($_GET['p'] ?? ''));
+                break;
             case 'jenjang':
                 ApiResponse::success($classBE->getAllJenjang());
                 break;
@@ -88,7 +92,7 @@ class ApiRouter
                 break;
             case 'tariff-detail':
                 $tariffId = $segments[0] ?? null;
-                $detail = $classBE->getTariffById($tariffId);
+                $detail = $classBE->getTariffDetailById($tariffId);
                 if ($detail) {
                     ApiResponse::success($detail);
                 } else {
@@ -98,7 +102,8 @@ class ApiRouter
             
             case 'tariff-update':
                 $tariffId = $segments[0] ?? null;
-                $classBE->updateTariff($tariffId);
+                $data = json_decode(file_get_contents('php://input'), true);
+                $classBE->updateTariffNominal($tariffId, $data['nominal'] ?? null);
                 break;
             case 'login':
                 $authBE->handleLogin();

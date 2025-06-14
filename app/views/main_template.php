@@ -66,6 +66,8 @@
                 <a href="/tagihan" class="block text-gray-700 hover:text-sky-600 transition-colors">Tagihan</a>
                 <a href="/rekap" class="block text-gray-700 hover:text-sky-600 transition-colors">Rekap</a>
                 <a href="/penjurnalan" class="block text-gray-700 hover:text-sky-600 transition-colors">Penjurnalan</a>
+                <a href="<?= $_ENV['ACCOUNTING_SYSTEM_URL'] ?>"
+                    class="block font-sm px-3 py-1.5 text-sky-500 border-2 border-sky-600 rounded-md hover:border-sky-800 hover:text-sky-800 transition-all">Sistem Akutansi</a>
                 <?php endif; ?>
                 <a href="/api/logout"
                     class="block font-sm px-3 py-1.5 text-white bg-red-600 rounded-md border hover:bg-red-800 transition-all">Logout</a>
@@ -99,6 +101,8 @@
                         class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Rekap</a>
                     <a href="/penjurnalan"
                         class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Penjurnalan</a>
+                    <a href="<?= $_ENV['ACCOUNTING_SYSTEM_URL'] ?>"
+                        class="block px-3 py-2 rounded-md text-base font-medium text-sky-700 hover:bg-sky-50 hover:text-sky-900">Sistem Akutansi</a>
                     <?php endif; ?>
                     <hr class="my-1">
                     <a href="/api/logout"

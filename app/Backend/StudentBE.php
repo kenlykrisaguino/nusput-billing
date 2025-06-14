@@ -28,7 +28,7 @@ class StudentBE
     {
         $query = "SELECT
                     s.id, s.nis, s.nama, j.nama AS jenjang, t.nama AS tingkat, k.nama AS kelas,
-                    s.va, s.spp,
+                    s.va, s.spp, s.updated_at,
                     (SELECT MAX(p.tanggal_pembayaran) FROM spp_pembayaran p WHERE p.siswa_id = s.id) AS latest_payment
                   FROM
                     siswa s
@@ -104,14 +104,14 @@ class StudentBE
         if (!$jenjang) {
             return ApiResponse::error('Jenjang tidak valid.', 422);
         }
-
+        $va = FormatHelper::formatVA($jenjang['va_code'], $nis);
         $insertData = [
             'nama' => trim($data['nama']),
             'nis' => $nis,
             'jenjang_id' => (int) $data['jenjang_id'],
             'tingkat_id' => (int) $data['tingkat_id'],
             'kelas_id' => isset($data['kelas_id']) ? (int) $data['kelas_id'] : null,
-            'va' => FormatHelper::formatVA($jenjang['va_code'], $nis),
+            'va' => $va,
             'no_hp_ortu' => $data['no_hp_ortu'] ?? null,
             'spp' => (float) $data['spp'],
         ];
@@ -127,7 +127,7 @@ class StudentBE
 
             $userData = [
                 'username' => $insertData['va'],
-                'password' => md5($nis),
+                'password' => FormatHelper::hashPassword($va),
                 'role' => 'siswa',
                 'siswa_id' => $newStudentId,
             ];
@@ -295,7 +295,7 @@ class StudentBE
 
                 $userData = [
                     'username' => $va,
-                    'password' => md5($row['nis']),
+                    'password' => FormatHelper::hashPassword($va),
                     'role' => 'siswa',
                     'siswa_id' => $newStudentId,
                 ];
@@ -586,7 +586,7 @@ class StudentBE
 
         $userData = [
             'username' => $va,
-            'password' => md5($row['nis']),
+            'password' => FormatHelper::hashPassword($va),
             'role' => 'siswa',
             'siswa_id' => $newStudentId,
         ];
@@ -616,12 +616,13 @@ class StudentBE
             'va' => $va,
             'no_hp_ortu' => $row['no_hp_ortu'],
             'spp' => $spp,
+            'updated_at' => Call::date(),
             'deleted_at' => null,
         ];
 
         $this->db->update('siswa', $studentData, ['nis' => $row['nis']]);
 
-        $this->db->update('users', ['username' => $va], ['siswa_id' => $this->db->find('siswa', ['nis' => $row['nis']])['id']]);
+        $this->db->update('users', ['username' => $va, 'password' => FormatHelper::hashPassword($va)], ['siswa_id' => $this->db->find('siswa', ['nis' => $row['nis']])['id']]);
     }
 
     /**
@@ -691,13 +692,15 @@ class StudentBE
         exit();
     }
 
-/**
+    /**
      * Mengambil detail lengkap satu siswa berdasarkan ID untuk form edit.
      */
     public function getStudentDetailById($id)
     {
-        if (empty($id) || !is_numeric($id)) return null;
-        return $this->db->find('siswa', ['id' => (int)$id]);
+        if (empty($id) || !is_numeric($id)) {
+            return null;
+        }
+        return $this->db->find('siswa', ['id' => (int) $id]);
     }
 
     /**
@@ -705,34 +708,40 @@ class StudentBE
      */
     public function updateStudentData($id, $data)
     {
-        if (empty($id) || empty($data)) return ApiResponse::error('Data tidak lengkap.', 400);
+        if (empty($id) || empty($data)) {
+            return ApiResponse::error('Data tidak lengkap.', 400);
+        }
 
         $nis = trim($data['nis'] ?? '');
-        if (empty($nis)) return ApiResponse::error('NIS tidak boleh kosong.', 422);
+        if (empty($nis)) {
+            return ApiResponse::error('NIS tidak boleh kosong.', 422);
+        }
 
-        $existingResult = $this->db->query("SELECT id FROM siswa WHERE nis = ? AND id != ?", [$nis, $id]);
+        $existingResult = $this->db->query('SELECT id FROM siswa WHERE nis = ? AND id != ?', [$nis, $id]);
         if ($this->db->fetchAssoc($existingResult)) {
             return ApiResponse::error("NIS '{$nis}' sudah digunakan oleh siswa lain.", 409);
         }
-        
-        $jenjang = $this->db->find('jenjang', ['id' => (int)$data['jenjang_id']]);
-        if (!$jenjang) return ApiResponse::error('Jenjang tidak valid.', 422);
-        
+
+        $jenjang = $this->db->find('jenjang', ['id' => (int) $data['jenjang_id']]);
+        if (!$jenjang) {
+            return ApiResponse::error('Jenjang tidak valid.', 422);
+        }
+
         $updateData = [
             'nama' => trim($data['nama']),
             'nis' => $nis,
-            'jenjang_id' => (int)$data['jenjang_id'],
-            'tingkat_id' => (int)$data['tingkat_id'],
-            'kelas_id' => !empty($data['kelas_id']) ? (int)$data['kelas_id'] : null,
+            'jenjang_id' => (int) $data['jenjang_id'],
+            'tingkat_id' => (int) $data['tingkat_id'],
+            'kelas_id' => !empty($data['kelas_id']) ? (int) $data['kelas_id'] : null,
             'va' => FormatHelper::formatVA($jenjang['va_code'], $nis),
             'no_hp_ortu' => $data['no_hp_ortu'] ?? null,
-            'spp' => (float)$data['spp']
+            'spp' => (float) $data['spp'],
         ];
 
         try {
             $this->db->beginTransaction();
-            $this->db->update('siswa', $updateData, ['id' => (int)$id]);
-            $this->db->update('users', ['username' => $updateData['va']], ['siswa_id' => (int)$id]);
+            $this->db->update('siswa', $updateData, ['id' => (int) $id]);
+            $this->db->update('users', ['username' => $updateData['va']], ['siswa_id' => (int) $id]);
             $this->db->commit();
             return ApiResponse::success([], 'Data siswa berhasil diupdate.');
         } catch (Exception $e) {
@@ -741,33 +750,31 @@ class StudentBE
             return ApiResponse::error('Gagal mengupdate data siswa.', 500);
         }
     }
-    
+
     /**
      * Mengambil daftar kategori biaya tambahan.
      */
     public function getFeeCategories()
     {
-        return [
-            ['id' => 'praktek', 'nama' => 'Biaya Praktek'],
-            ['id' => 'ekstra', 'nama' => 'Biaya Ekstrakurikuler'],
-            ['id' => 'daycare', 'nama' => 'Biaya Daycare'],
-        ];
+        return [['id' => 'praktek', 'nama' => 'Biaya Praktek'], ['id' => 'ekstra', 'nama' => 'Biaya Ekstrakurikuler'], ['id' => 'daycare', 'nama' => 'Biaya Daycare']];
     }
-    
+
     /**
      * Mengambil biaya tambahan yang ada untuk siswa pada periode tertentu.
      */
     public function getStudentFeesByPeriod($siswaId, $month, $year)
     {
-        if (empty($siswaId) || empty($month) || empty($year)) return [];
-        
+        if (empty($siswaId) || empty($month) || empty($year)) {
+            return [];
+        }
+
         return $this->db->findAll('spp_biaya_tambahan', [
-            'siswa_id' => (int)$siswaId,
-            'bulan'    => (int)$month,
-            'tahun'    => (int)$year
+            'siswa_id' => (int) $siswaId,
+            'bulan' => (int) $month,
+            'tahun' => (int) $year,
         ]);
     }
-    
+
     /**
      * Menyimpan (Create/Update/Delete) biaya tambahan untuk siswa pada periode tertentu.
      */
@@ -789,26 +796,31 @@ class StudentBE
             $this->db->beginTransaction();
 
             $idsFromRequest = array_filter(array_column($fees, 'id'));
-            
+
             if (!empty($idsFromRequest)) {
                 $placeholders = implode(',', array_fill(0, count($idsFromRequest), '?'));
-                $params = [(int)$siswaId, (int)$month, (int)$year, ...$idsFromRequest];
+                $params = [(int) $siswaId, (int) $month, (int) $year, ...$idsFromRequest];
                 $this->db->query("DELETE FROM spp_biaya_tambahan WHERE siswa_id = ? AND bulan = ? AND tahun = ? AND id NOT IN ($placeholders)", $params);
             } else {
-                $this->db->delete('spp_biaya_tambahan', ['siswa_id' => (int)$siswaId, 'bulan' => (int)$month, 'tahun' => (int)$year]);
+                $this->db->delete('spp_biaya_tambahan', ['siswa_id' => (int) $siswaId, 'bulan' => (int) $month, 'tahun' => (int) $year]);
             }
-            
+
             foreach ($fees as $fee) {
-                if (empty($fee['kategori']) || !isset($fee['nominal']) || !is_numeric($fee['nominal'])) continue;
+                if (empty($fee['kategori']) || !isset($fee['nominal']) || !is_numeric($fee['nominal'])) {
+                    continue;
+                }
 
                 $feeData = [
-                    'siswa_id' => (int)$siswaId, 'bulan' => (int)$month, 'tahun' => (int)$year,
-                    'kategori' => $fee['kategori'], 'nominal' => (float)$fee['nominal'],
+                    'siswa_id' => (int) $siswaId,
+                    'bulan' => (int) $month,
+                    'tahun' => (int) $year,
+                    'kategori' => $fee['kategori'],
+                    'nominal' => (float) $fee['nominal'],
                     'keterangan' => $fee['keterangan'] ?? '',
                 ];
 
                 if (!empty($fee['id'])) {
-                    $this->db->update('spp_biaya_tambahan', $feeData, ['id' => (int)$fee['id']]);
+                    $this->db->update('spp_biaya_tambahan', $feeData, ['id' => (int) $fee['id']]);
                 } else {
                     $this->db->insert('spp_biaya_tambahan', $feeData);
                 }
@@ -830,11 +842,15 @@ class StudentBE
     {
         $siswa = $this->db->find('siswa', ['id' => $siswaId]);
 
-        $update = $this->db->update('siswa', [
-            'deleted_at' => Call::date(),
-        ], ['id' => $siswaId]);
+        $update = $this->db->update(
+            'siswa',
+            [
+                'deleted_at' => Call::date(),
+            ],
+            ['id' => $siswaId],
+        );
 
-        if(!$update){
+        if (!$update) {
             return ApiResponse::error('Tidak menemukan data siswa untuk dihapus', 400);
         }
         return ApiResponse::success(null, "Berhasil menonaktifkan $siswa[nama] dari sistem");

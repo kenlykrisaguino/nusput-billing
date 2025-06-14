@@ -88,6 +88,9 @@
           <td class="px-4 py-2 whitespace-nowrap">${escapeHtml(
             student.latest_payment || "-"
           )}</td>
+          <td class="px-4 py-2 whitespace-nowrap">${escapeHtml(
+            student.updated_at || "-"
+          )}</td>
         </tr>
       `;
       tbody.insertAdjacentHTML("beforeend", row);
@@ -269,6 +272,16 @@
       .addEventListener("click", resetFiltersAndReload);
   });
 
+  function openEditClassModal(tariffId) {
+    if (!tariffId) return;
+
+    window.dispatchEvent(
+      new CustomEvent("open-edit-tariff-modal", {
+        detail: { tariffId: tariffId },
+      })
+    );
+  }
+
   /**
    * Mengekspos fungsi yang perlu dipanggil dari luar (misal: dari HTML `onclick`).
    */
@@ -277,5 +290,6 @@
     openEditStudentModal,
     handleDeleteStudent,
     loadStudentsData,
+    openEditClassModal,
   };
 })();

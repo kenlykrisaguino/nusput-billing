@@ -55,6 +55,13 @@
                                class="block w-full rounded-md border-gray-300 pl-10 px-3 py-2 shadow-sm sm:text-sm focus:border-sky-500 focus:ring-sky-500">
                     </div>
                 </div>
+                <div>
+                    <label for="tariff_year" class="block text-sm font-medium text-gray-700 mb-1">Nominal Tarif SPP</label>
+                    <div class="relative mt-1">
+                        <input type="number" id="tariff_year" x-model.number="formData.tahun" required placeholder="2025" type="number"
+                               class="block w-full rounded-md border-gray-300 px-3 py-2 shadow-sm sm:text-sm focus:border-sky-500 focus:ring-sky-500">
+                    </div>
+                </div>
             </div>
 
             <div class="pt-6 mt-6 border-t border-gray-200 flex justify-end gap-3">
@@ -125,6 +132,7 @@
                         payload.kelas_id = null;
                     }
                     const response = await window.api.post('/tariff-create', payload);
+                    console.log(response)
                     if (response.data.success) {
                         window.showToast(response.data.message || 'Tarif berhasil disimpan.', 'success');
                         this.closeModal();

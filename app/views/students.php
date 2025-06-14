@@ -149,43 +149,50 @@
                                     <th class="px-4 py-3">Virtual Account</th>
                                     <th class="px-4 py-3">Monthly Bills</th>
                                     <th class="px-4 py-3">Last Payment</th>
+                                    <th class="px-4 py-3">Updated At</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php use App\Helpers\FormatHelper;
                                 $students = $data['students'] ?? ($app->StudentBE()->getStudents() ?? []); ?>
-                                <?php if (count($students) > 0) : ?><?php foreach($students as $student) :?>
-                                <tr
-                                    class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
-                                    <td class="px-4 py-2 flex gap-2 items-center">
-                                        <button
-                                            onclick="pages.students.openEditStudentModal('<?= htmlspecialchars($student['id'] ?? '') ?>')"
-                                            title="Edit Siswa" class="text-sky-600 hover:text-sky-800"><i
-                                                class="ti ti-pencil"></i></button>
-                                        <button
-                                            onclick="pages.students.handleDeleteStudent('<?= htmlspecialchars($student['id'] ?? '') ?>', '<?= htmlspecialchars(addslashes($student['nama'] ?? '')) ?>')"
-                                            title="Hapus Siswa" class="text-red-500 hover:text-red-700"><i
-                                                class="ti ti-trash"></i></button>
-                                    </td>
-                                    <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
-                                        <?= htmlspecialchars($student['nama'] ?? '') ?><div
-                                            class="text-xs text-slate-500 font-normal">
-                                            <?= htmlspecialchars($student['nis'] ?? '') ?></div>
-                                    </th>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($student['jenjang'] ?? '') ?>
-                                        <?= htmlspecialchars($student['tingkat'] ?? '') ?>
-                                        <?= htmlspecialchars($student['kelas'] ?? '') ?></td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($student['va'] ?? '') ?></td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= FormatHelper::formatRupiah($student['spp'] ?? 0) ?></td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($student['latest_payment'] ?? '-') ?></td>
-                                </tr><?php endforeach;?><?php else :?><tr>
+                                <?php if (count($students) > 0) : ?>
+                                    <?php foreach($students as $student) :?>
+                                        <tr
+                                            class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
+                                            <td class="px-4 py-2 flex gap-2 items-center">
+                                                <button
+                                                    x-on:click="pages.students.openEditStudentModal('<?= htmlspecialchars($student['id'] ?? '') ?>')" title="Edit Siswa" class="text-sky-600 hover:text-sky-800"><i
+                                                        class="ti ti-pencil"></i></button>
+                                                <button
+                                                    onclick="pages.students.handleDeleteStudent('<?= htmlspecialchars($student['id'] ?? '') ?>', '<?= htmlspecialchars(addslashes($student['nama'] ?? '')) ?>')"
+                                                    title="Hapus Siswa" class="text-red-500 hover:text-red-700"><i
+                                                        class="ti ti-trash"></i></button>
+                                            </td>
+                                            <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                                                <?= htmlspecialchars($student['nama'] ?? '') ?><div
+                                                    class="text-xs text-slate-500 font-normal">
+                                                    <?= htmlspecialchars($student['nis'] ?? '') ?></div>
+                                            </th>
+                                            <td class="px-4 py-2 whitespace-nowrap">
+                                                <?= htmlspecialchars($student['jenjang'] ?? '') ?>
+                                                <?= htmlspecialchars($student['tingkat'] ?? '') ?>
+                                                <?= htmlspecialchars($student['kelas'] ?? '') ?></td>
+                                            <td class="px-4 py-2 whitespace-nowrap">
+                                                <?= htmlspecialchars($student['va'] ?? '') ?></td>
+                                            <td class="px-4 py-2 whitespace-nowrap">
+                                                <?= FormatHelper::formatRupiah($student['spp'] ?? 0) ?></td>
+                                            <td class="px-4 py-2 whitespace-nowrap">
+                                                <?= htmlspecialchars($student['latest_payment'] ?? '-') ?></td>
+                                            <td class="px-4 py-2 whitespace-nowrap">
+                                                <?= 'A' ?></td>
+                                        </tr>
+                                    <?php endforeach;?>
+                                <?php else :?>
+                                <tr>
                                     <td class="px-4 py-2 text-center text-gray-500" colspan="6">Belum ada data
                                         siswa.</td>
-                                </tr><?php endif;?>
+                                </tr>
+                                <?php endif;?>
                             </tbody>
                         </table>
                     </div>
@@ -221,8 +228,8 @@
                                     class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
                                     <td class="px-4 py-2 flex gap-2 items-center">
                                         <button type="button"
-                                            x-on:click="$dispatch('open-edit-tariff-modal', { tariffId: '<?= htmlspecialchars($class['id'] ?? '') ?>' })"
                                             class="text-sky-600 hover:text-sky-800 cursor-pointer edit-tariff-btn"
+                                            onclick="window.dispatchEvent(new CustomEvent('open-edit-tariff-modal', { detail: { tariffId: <?= htmlspecialchars($tariff['id'] ?? 0) ?> } }))"
                                             title="Edit Tarif">
                                             <i class="ti ti-pencil"></i>
                                         </button>
@@ -262,23 +269,7 @@
 <?php include_once __DIR__ . '/modals/grade-create.php'; ?>
 <?php include_once __DIR__ . '/modals/class-create.php'; ?>
 <?php include_once __DIR__ . '/modals/tariff-create.php'; ?>
-
-<div id="filter-class-modal"
-    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[100]">
-    <div
-        class="relative top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-5 border w-11/12 md:w-1/2 lg:w-1/3 shadow-lg rounded-md bg-white">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-medium">Filter Kelas</h3><button
-                onclick="document.getElementById('filter-class-modal').classList.add('hidden')"
-                class="text-gray-400 hover:text-gray-600"><i class="ti ti-x text-xl"></i></button>
-        </div>
-        <p>Formulir filter kelas...</p>
-        <div class="flex justify-end mt-6"><button
-                onclick="document.getElementById('filter-class-modal').classList.add('hidden')"
-                class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 mr-2">Tutup</button><button
-                class="px-4 py-2 bg-sky-600 text-white rounded hover:bg-sky-700">Terapkan Filter</button></div>
-    </div>
-</div>
+<?php include_once __DIR__ . '/modals/tariff-edit.php'; ?>
 
 <script src="/js/flowbite.min.js"></script>
 <script src="/js/datatables.js"></script>
@@ -296,7 +287,7 @@
             filter: true,
             labels: {
                 placeholder: "Cari siswa...",
-                perPage: "{select} siswa per halaman",
+                perPage: "siswa per halaman",
                 noRows: "Tidak ada data siswa ditemukan",
                 info: "Menampilkan {start} sampai {end} dari {rows} siswa"
             }
@@ -312,8 +303,8 @@
             sortable: true,
             filter: true,
             labels: {
-                placeholder: "Cari kelas...",
-                perPage: "{select} kelas per halaman",
+                placeholder: "Cari tarif...",
+                perPage: "kelas per halaman",
                 noRows: "Tidak ada data kelas ditemukan",
                 info: "Menampilkan {start} sampai {end} dari {rows} kelas"
             }

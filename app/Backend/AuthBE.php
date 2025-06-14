@@ -6,6 +6,7 @@ use App\Helpers\ApiResponse as Response;
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
+use App\Helpers\FormatHelper;
 use Exception;
 
 class AuthBE
@@ -42,14 +43,19 @@ class AuthBE
     {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $username = $_POST['username'] ?? '';
-            $password = md5($_POST['password']) ?? '';
+            $password = $_POST['password'] ?? '';
 
-            $result = $this->db->query("SELECT u.* FROM users u WHERE username = '$username' AND password = '$password'");
+            $result = $this->db->query("SELECT u.* FROM users u WHERE username = '$username'");
             $user = $this->db->fetchAssoc($result);
+
+            $isValid = FormatHelper::verifyPassword($password, $user['password']);
+            
             if ($user) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['role'] = $user['role'];
                 Response::success($user, 'Login successful');
+            } else if(!$isValid){
+                Response::error('Invalid credentials', 401);
             } else {
                 Response::error('Invalid credentials', 401);
             }

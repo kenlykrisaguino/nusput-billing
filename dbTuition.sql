@@ -30,7 +30,9 @@ CREATE TABLE `siswa` (
   `va` varchar(255),
   `no_hp_ortu` varchar(255), 
   `spp` decimal(15, 2),
-  `deleted_at` datetime default null
+  `created_at` timestamp default now(),
+  `updated_at` timestamp default now(),
+  `deleted_at` timestamp default null
 );
 
 CREATE TABLE `spp_tarif` (
@@ -38,7 +40,9 @@ CREATE TABLE `spp_tarif` (
   `jenjang_id` int,
   `tingkat_id` int,
   `kelas_id` int DEFAULT null,
-  `nominal` decimal(15,2)
+  `nominal` decimal(15,2),
+  `tahun` YEAR,
+  `created_at` timestamp default now()
 );
 
 CREATE TABLE `spp_biaya_tambahan` (
@@ -171,24 +175,24 @@ INSERT INTO `kelas` (`tingkat_id`, `nama`) VALUES
 (19, 'A'),(19, 'B'),
 (20, 'A'),(20, 'B');
 
-INSERT INTO `spp_tarif` (`jenjang_id`, `tingkat_id`, `kelas_id`, `nominal`) VALUES
-(1, 1, null, 650000.00),
-(1, 2, 1, 650000.00),(1, 2, 2, 950000.00),
-(1, 3, 3, 650000.00),(1, 3, 4, 950000.00),
-(2, 4, null, 650000.00),(2, 5, null, 650000.00),(2, 6, null, 650000.00),
-(2, 7, 5, 485000.00),(2, 7, 6, 485000.00),
-(2, 8, 7, 385000.00),(2, 8, 8, 385000.00),
-(2, 9, null, 562000.00),
-(3, 10, 9, 575000.00),(3, 10, 10, 575000.00),
-(3, 11, null, 540000.00),
-(3, 12, 11, 835000.00),(3, 12, 12, 835000.00),
-(4, 13, 13, 700000.00),(4, 13, 14, 700000.00),
-(4, 14, 15, 665000.00),(4, 14, 16, 665000.00),(4, 14, 17, 950000.00),
-(4, 15, 18, 776000.00),(4, 15, 19, 866000.00),(4, 15, 20, 1226000.00),
-(5, 16, null, 610000.00),(5, 17, null, 625000.00),(5, 18, null, 820000.00),
-(6, 19, 21, 520000.00),(6, 19, 22, 520000.00),
-(6, 20, 23, 520000.00),(6, 20, 24, 520000.00),
-(6, 19, null, 694000.00);
+INSERT INTO `spp_tarif` (`jenjang_id`, `tingkat_id`, `kelas_id`, `nominal`, `tahun`) VALUES
+(1, 1, null, 650000.00, 2025),
+(1, 2, 1, 650000.00, 2025),(1, 2, 2, 950000.00, 2025),
+(1, 3, 3, 650000.00, 2025),(1, 3, 4, 950000.00, 2025),
+(2, 4, null, 650000.00, 2025),(2, 5, null, 650000.00, 2025),(2, 6, null, 650000.00, 2025),
+(2, 7, 5, 485000.00, 2025),(2, 7, 6, 485000.00, 2025),
+(2, 8, 7, 385000.00, 2025),(2, 8, 8, 385000.00, 2025),
+(2, 9, null, 562000.00, 2025),
+(3, 10, 9, 575000.00, 2025),(3, 10, 10, 575000.00, 2025),
+(3, 11, null, 540000.00, 2025),
+(3, 12, 11, 835000.00, 2025),(3, 12, 12, 835000.00, 2025),
+(4, 13, 13, 700000.00, 2025),(4, 13, 14, 700000.00, 2025),
+(4, 14, 15, 665000.00, 2025),(4, 14, 16, 665000.00, 2025),(4, 14, 17, 950000.00, 2025),
+(4, 15, 18, 776000.00, 2025),(4, 15, 19, 866000.00, 2025),(4, 15, 20, 1226000.00, 2025),
+(5, 16, null, 610000.00, 2025),(5, 17, null, 625000.00, 2025),(5, 18, null, 820000.00, 2025),
+(6, 19, 21, 520000.00, 2025),(6, 19, 22, 520000.00, 2025),
+(6, 20, 23, 520000.00, 2025),(6, 20, 24, 520000.00, 2025),
+(6, 19, null, 694000.00, 2025);
 
 INSERT INTO siswa(nama, nis, jenjang_id, tingkat_id, kelas_id, va, no_hp_ortu, spp) VALUES
 ('Angel Ravelynta', '5048', 4, 15, 18, '9881105624255048', '081329171920', 776000.00);
@@ -196,4 +200,4 @@ INSERT INTO siswa(nama, nis, jenjang_id, tingkat_id, kelas_id, va, no_hp_ortu, s
 INSERT INTO users(username, password, role, siswa_id) VALUES
 ('admin', '25d55ad283aa400af464c76d713c07ad', 'admin', null),
 ('subadmin', '25d55ad283aa400af464c76d713c07ad', 'admin', null),
-('9881105624255048', '9689b341aa161423602a005b0e1b865c', 'siswa', 1);
+('9881105624255048', '$2y$10$.wAQesL2mOW2qWzWrgTaHOv6gwiIbidN8PUcSRCHjVn2aosZuJNhy', 'siswa', 1);

@@ -3,6 +3,7 @@
 namespace App\Backend;
 
 use App\Helpers\ApiResponse;
+use App\Helpers\Call;
 
 class ClassBE
 {
@@ -200,19 +201,29 @@ class ClassBE
      */
     public function getTariffList()
     {
+        $year = Call::year();
         $query = "SELECT
                     st.id,
                     j.nama AS jenjang,
                     t.nama AS tingkat,
                     k.nama AS kelas,
                     st.nominal,
-                    (SELECT COUNT(s.id) FROM siswa s WHERE s.spp = st.nominal AND s.jenjang_id = st.jenjang_id AND s.tingkat_id = st.tingkat_id AND (s.kelas_id = st.kelas_id OR st.kelas_id IS NULL)) as jumlah_siswa,
-                    CONCAT(j.nama, ' ', t.nama, ' ', COALESCE(k.nama, '')) as nama_tarif
-                  FROM spp_tarif st
-                  JOIN jenjang j ON st.jenjang_id = j.id
-                  JOIN tingkat t ON st.tingkat_id = t.id
-                  LEFT JOIN kelas k ON st.kelas_id = k.id
-                  ORDER BY j.id, t.id, k.id";
+                    st.tahun,
+                    (
+                        SELECT COUNT(s.id)
+                        FROM siswa s
+                        WHERE s.spp = st.nominal
+                        AND s.jenjang_id = st.jenjang_id
+                        AND s.tingkat_id = st.tingkat_id
+                        AND (s.kelas_id = st.kelas_id OR st.kelas_id IS NULL)
+                    ) AS jumlah_siswa,
+                    CONCAT(j.nama, ' ', t.nama, ' ', COALESCE(k.nama, '')) AS nama_tarif
+                FROM spp_tarif st
+                JOIN jenjang j ON st.jenjang_id = j.id
+                JOIN tingkat t ON st.tingkat_id = t.id
+                LEFT JOIN kelas k ON st.kelas_id = k.id
+                WHERE st.tahun = (SELECT MAX(tahun) FROM spp_tarif)
+                ORDER BY j.id, t.id, k.id;";
         return $this->db->fetchAll($this->db->query($query));
     }
 
@@ -228,22 +239,39 @@ class ClassBE
         $tingkatId = $data['tingkat_id'] ?? null;
         $kelasId = $data['kelas_id'] ?? null;
         $nominal = $data['nominal'] ?? null;
+        $tahun = $data['tahun'] ?? Call::year();
 
         if (empty($jenjangId) || empty($tingkatId) || !isset($nominal)) {
             return ApiResponse::error('Jenjang, Tingkat, dan Nominal wajib diisi.', 422);
         }
 
-        $criteria = [
-            'jenjang_id' => (int) $jenjangId,
-            'tingkat_id' => (int) $tingkatId,
-            'kelas_id' => empty($kelasId) ? null : (int) $kelasId,
-        ];
-        if ($this->db->find('spp_tarif', $criteria)) {
-            return ApiResponse::error('Tarif untuk kombinasi ini sudah ada.', 409);
+        if(empty($kelasId)) {
+            $criteria = [
+                'jenjang_id' => (int) $jenjangId,
+                'tingkat_id' => (int) $tingkatId,
+                'tahun' => $tahun
+            ];
+        } else {
+            $criteria = [
+                'jenjang_id' => (int) $jenjangId,
+                'tingkat_id' => (int) $tingkatId,
+                'kelas_id' => (int) $kelasId,
+                'tahun' => $tahun
+            ];
         }
-
+        
         try {
-            $this->db->insert('spp_tarif', array_merge($criteria, ['nominal' => (float) $nominal]));
+            $tariff = $this->db->findAll('spp_tarif', $criteria);
+            $count = count($tariff);
+            if ($tariff) {
+                if($count == 1){
+                    $this->db->update('spp_tarif', array_merge($criteria, ['nominal' => (float) $nominal]), ['id' => $tariff[0]['id']]);
+                } else {
+                    return ApiResponse::error('Masukan kombinasi jenjang, tingkat, dan kelas yang tepat.', 400);
+                }
+            } else {
+                $this->db->insert('spp_tarif', array_merge($criteria, ['nominal' => (float) $nominal]));
+            }
             return ApiResponse::success([], 'Tarif baru berhasil ditambahkan.');
         } catch (\Exception $e) {
             error_log('Gagal membuat tarif: ' . $e->getMessage());
@@ -252,55 +280,49 @@ class ClassBE
     }
 
     /**
-     * Mengambil detail satu tarif berdasarkan ID.
+     * Mengambil detail satu tarif beserta nama relasinya (Jenjang, Tingkat, Kelas).
      */
-    public function getTariffById($id)
+    public function getTariffDetailById($tariffId)
     {
-        if (empty($id) || !is_numeric($id)) {
+        if (empty($tariffId) || !is_numeric($tariffId)) {
             return null;
         }
-        return $this->db->find('spp_tarif', ['id' => (int) $id]);
+
+        $query = "SELECT
+                    st.id,
+                    st.jenjang_id,
+                    st.tingkat_id,
+                    st.kelas_id,
+                    st.nominal,
+                    st.tahun,
+                    j.nama AS jenjang,
+                    t.nama AS tingkat,
+                    k.nama AS kelas
+                  FROM spp_tarif st
+                  JOIN jenjang j ON st.jenjang_id = j.id
+                  JOIN tingkat t ON st.tingkat_id = t.id
+                  LEFT JOIN kelas k ON st.kelas_id = k.id
+                  WHERE st.id = ?";
+
+        $result = $this->db->query($query, [$tariffId]);
+        return $this->db->fetchAssoc($result);
     }
 
     /**
-     * Mengupdate data tarif yang ada.
+     * Hanya meng-update nominal dari sebuah tarif.
      */
-    public function updateTariff($id)
+    public function updateTariffNominal($tariffId, $nominal)
     {
-        $json = file_get_contents('php://input');
-        $data = json_decode($json, true);
-
-        $jenjangId = $data['jenjang_id'] ?? null;
-        $tingkatId = $data['tingkat_id'] ?? null;
-        $kelasId = $data['kelas_id'] ?? null;
-        $nominal = $data['nominal'] ?? null;
-
-        if (empty($id) || empty($jenjangId) || empty($tingkatId) || !isset($nominal)) {
-            return ApiResponse::error('Data tidak lengkap.', 422);
+        if (empty($tariffId) || !isset($nominal) || !is_numeric($nominal)) {
+            return ApiResponse::error('Data tidak valid.', 422);
         }
 
-        $criteria = [
-            'jenjang_id' => (int) $jenjangId,
-            'tingkat_id' => (int) $tingkatId,
-            'kelas_id' => empty($kelasId) ? null : (int) $kelasId,
-        ];
-        $query = 'SELECT id FROM spp_tarif WHERE jenjang_id = ? AND tingkat_id = ? AND IFNULL(kelas_id, 0) = IFNULL(?, 0) AND id != ?';
-        $params = [(int) $jenjangId, (int) $tingkatId, empty($kelasId) ? null : (int) $kelasId, (int) $id];
+        $affectedRows = $this->db->update('spp_tarif', ['nominal' => (float) $nominal], ['id' => (int) $tariffId]);
 
-        if ($this->db->fetchAssoc($this->db->query($query, $params))) {
-            return ApiResponse::error('Tarif untuk kombinasi ini sudah ada.', 409);
-        }
-
-        try {
-            unset($criteria['kelas_id']); // Hapus untuk update
-            $criteria['kelas_id'] = empty($kelasId) ? null : (int) $kelasId;
-            $criteria['nominal'] = (float) $nominal;
-
-            $this->db->update('spp_tarif', $criteria, ['id' => (int) $id]);
+        if ($affectedRows > 0) {
             return ApiResponse::success([], 'Tarif berhasil diupdate.');
-        } catch (\Exception $e) {
-            error_log("Gagal update tarif #{$id}: " . $e->getMessage());
-            return ApiResponse::error('Gagal mengupdate tarif.', 500);
+        } else {
+            return ApiResponse::error('Tidak ada perubahan atau tarif tidak ditemukan.', 400);
         }
     }
 }
