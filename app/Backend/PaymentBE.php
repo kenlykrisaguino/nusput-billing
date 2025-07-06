@@ -300,8 +300,7 @@ class PaymentBE
 
                 $waMsg[$va] = [
                     'target' => $r['parent_phone'],
-                    'message' => "Pembayaran SPP telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
-                    http://$url/invoice/$encrypted",
+                    'message' => "Pembayaran SPP telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\nhttp://$url/invoice/$encrypted",
                     'delay' => '1',
                 ];
             }

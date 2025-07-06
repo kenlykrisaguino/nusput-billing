@@ -638,8 +638,19 @@ class BillBE
             $sum = FormatHelper::formatRupiah($bill['denda'] + $bill['total_nominal']);
             $status = $bill['status'] === 'lunas';
             $message = implode(' ', $msg[$status ? 'success' : 'failed']);
-            $message .= "SPP: $monthlyFee\nDenda: $denda\n*Total Pembayaran: $sum*\n\n";
-            $message .= "Virtual Account: BNI *$siswa[va]* atas nama *$siswa[nama]*";
+            if($status){
+                $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswa['id']]);
+                $rels = $this->db->find('spp_pembayaran_tagihan', ['tagihan_id' => $bill['id']]); 
+                $pymt = $this->db->find('spp_pembayaran', ['id' => $rels['pembayaran_id']]); 
+                $url = $_SERVER['HTTP_HOST'];
+                $encrypted = $this->generateInvoiceURL($siswa['id'], $rels['id']);
+                $message .= "Terima kasih kepada orang tua $siswa[nama] yang telah melakukan pembayaran pada tanggal *$pymt[tanggal_pembayaran]*.";
+                $message .= "Untuk bukti pembayaran bisa dilihat di http://$url/invoice/$encrypted";
+            } else {
+                $message .= "SPP: $monthlyFee\nDenda: $denda\n*Total Pembayaran: $sum*\n\n";
+                $message .= "Virtual Account: BNI *$siswa[va]* atas nama *$siswa[nama]*\n";
+                $message .= "Alternate VA: BNI *$siswa[va_midtrans]* atas nama *$siswa[nama]*";
+            }
 
             $msgLists[] = [
                 'target' => $siswa['no_hp_ortu'],
