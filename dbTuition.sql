@@ -28,6 +28,7 @@ CREATE TABLE `siswa` (
   `tingkat_id` int,
   `kelas_id` int,
   `va` varchar(255),
+  `va_midtrans` varchar(255) DEFAULT NULL,
   `no_hp_ortu` varchar(255), 
   `spp` decimal(15, 2),
   `created_at` timestamp default now(),
@@ -55,15 +56,8 @@ CREATE TABLE `spp_biaya_tambahan` (
   `keterangan` varchar(255)
 );
 
-CREATE TABLE `spp_penerimaan` (
-  `id` int PRIMARY KEY AUTO_INCREMENT,
-  `tanggal` date,
-  `file_csv` varchar(255)
-);
-
 CREATE TABLE `spp_pembayaran` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
-  `penerimaan_id` int,
   `siswa_id` int,
   `tanggal_pembayaran` date,
   `jumlah_bayar` decimal(15,2)
@@ -72,20 +66,27 @@ CREATE TABLE `spp_pembayaran` (
 CREATE TABLE `spp_tagihan` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `siswa_id` int,
-  `bulan` varchar(255),
+  `bulan` int,
   `tahun` int,
   `jatuh_tempo` date,
   `total_nominal` decimal(15,2),
   `denda` decimal(15,2),
-  `status` enum('belum_lunas','lunas')
+  `count_denda` int,
+  `status` enum('belum_lunas','lunas'),
+  `midtrans_trx_id` varchar(255),
+  `is_active` boolean default true
 );
 
 CREATE TABLE `spp_tagihan_detail` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `tagihan_id` int,
-  `jenis` enum('spp','praktek','ekstra','daycare'),
+  `jenis` enum('spp','late','praktek','ekstra','daycare'),
   `nominal` decimal(15,2),
-  `keterangan` varchar(255)
+  `keterangan` varchar(255),
+  `bulan` int,
+  `tahun` int,
+  `pembayaran_id` int DEFAULT NULL,
+  `lunas` boolean DEFAULT FALSE
 );
 
 CREATE TABLE `spp_pembayaran_tagihan` (
@@ -95,35 +96,14 @@ CREATE TABLE `spp_pembayaran_tagihan` (
   `jumlah` decimal(15,2)
 );
 
-CREATE TABLE `spp_jurnal` (
-  `id` int PRIMARY KEY AUTO_INCREMENT,
-  `tanggal` date,
-  `jenis` enum('piutang','pelunasan'),
-  `deskripsi` varchar(255)
-);
-
-CREATE TABLE `spp_jurnal_detail` (
-  `id` int PRIMARY KEY AUTO_INCREMENT,
-  `jurnal_id` int,
-  `akun` varchar(255),
-  `debit` decimal(15,2),
-  `kredit` decimal(15,2)
-);
-
-CREATE TABLE `spp_jurnal_tagihan` (
-  `id` int PRIMARY KEY AUTO_INCREMENT,
-  `jurnal_id` int,
-  `pembayaran_tagihan_id` int,
-  `nominal_tagihan` decimal(15,2),
-  `nominal_denda` decimal(15,2)
-);
-
 CREATE TABLE `users` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `username` varchar(255) UNIQUE,
   `password` varchar(255),
   `role` enum('admin','siswa'),
-  `siswa_id` int DEFAULT NULL
+  `siswa_id` int DEFAULT NULL,
+  `otp_code` varchar(255) DEFAULT NULL,
+  `otp_created` timestamp DEFAULT NOW()
 );
 
 ALTER TABLE `tingkat` ADD FOREIGN KEY (`jenjang_id`) REFERENCES `jenjang` (`id`);
@@ -135,15 +115,12 @@ ALTER TABLE `spp_tarif` ADD FOREIGN KEY (`jenjang_id`) REFERENCES `jenjang` (`id
 ALTER TABLE `spp_tarif` ADD FOREIGN KEY (`tingkat_id`) REFERENCES `tingkat` (`id`);
 ALTER TABLE `spp_tarif` ADD FOREIGN KEY (`kelas_id`) REFERENCES `kelas` (`id`);
 ALTER TABLE `spp_biaya_tambahan` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
-ALTER TABLE `spp_pembayaran` ADD FOREIGN KEY (`penerimaan_id`) REFERENCES `spp_penerimaan` (`id`);
 ALTER TABLE `spp_pembayaran` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
 ALTER TABLE `spp_tagihan` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
 ALTER TABLE `spp_tagihan_detail` ADD FOREIGN KEY (`tagihan_id`) REFERENCES `spp_tagihan` (`id`);
+ALTER TABLE `spp_tagihan_detail` ADD FOREIGN KEY (`pembayaran_id`) REFERENCES `spp_pembayaran` (`id`);
 ALTER TABLE `spp_pembayaran_tagihan` ADD FOREIGN KEY (`pembayaran_id`) REFERENCES `spp_pembayaran` (`id`);
 ALTER TABLE `spp_pembayaran_tagihan` ADD FOREIGN KEY (`tagihan_id`) REFERENCES `spp_tagihan` (`id`);
-ALTER TABLE `spp_jurnal_detail` ADD FOREIGN KEY (`jurnal_id`) REFERENCES `spp_jurnal` (`id`);
-ALTER TABLE `spp_jurnal_tagihan` ADD FOREIGN KEY (`jurnal_id`) REFERENCES `spp_jurnal` (`id`);
-ALTER TABLE `spp_jurnal_tagihan` ADD FOREIGN KEY (`pembayaran_tagihan_id`) REFERENCES `spp_pembayaran_tagihan` (`id`);
 ALTER TABLE `users` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
 
 INSERT INTO `jenjang` (`nama`, `va_code`) VALUES
@@ -195,9 +172,9 @@ INSERT INTO `spp_tarif` (`jenjang_id`, `tingkat_id`, `kelas_id`, `nominal`, `tah
 (6, 19, null, 694000.00, 2025);
 
 INSERT INTO siswa(nama, nis, jenjang_id, tingkat_id, kelas_id, va, no_hp_ortu, spp) VALUES
-('Angel Ravelynta', '5048', 4, 15, 18, '9881105624255048', '081329171920', 776000.00);
+('Angel Ravelynta', '5048', 4, 15, 18, '9881105625265048', '081329171920', 776000.00);
 
 INSERT INTO users(username, password, role, siswa_id) VALUES
-('admin', '25d55ad283aa400af464c76d713c07ad', 'admin', null),
-('subadmin', '25d55ad283aa400af464c76d713c07ad', 'admin', null),
-('9881105624255048', '$2y$10$.wAQesL2mOW2qWzWrgTaHOv6gwiIbidN8PUcSRCHjVn2aosZuJNhy', 'siswa', 1);
+('admin', '$2y$10$CxW7bEYbDatjnTXSmquLteJ9Qd3npCFreytyp9ZNfRhtA\/o.tuvHe', 'admin', null),
+('subadmin', '$2y$10$CxW7bEYbDatjnTXSmquLteJ9Qd3npCFreytyp9ZNfRhtA\/o.tuvHe', 'admin', null),
+('9881105624255048', '$2y$10$tBqwLms6EBjFlkiBvbSnxej2qJVLuqjy.d1snhZyLxnWpys39cvim', 'siswa', 1);

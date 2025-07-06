@@ -6,6 +6,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
+use App\Midtrans\Midtrans;
 use DateTime;
 use Error;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -21,25 +22,34 @@ use Mpdf\Output\Destination;
 class PaymentBE
 {
     private $db;
+    private Midtrans $midtrans;
 
-    private $status = [
-        'paid' => BILL_STATUS_PAID,
-        'unpaid' => BILL_STATUS_UNPAID,
-        'late' => BILL_STATUS_LATE,
-        'inactive' => BILL_STATUS_INACTIVE,
-        'active' => BILL_STATUS_ACTIVE,
-        'disabled' => BILL_STATUS_DISABLED,
-    ];
-
-    public function __construct($database)
+    public function __construct($database, Midtrans $midtrans)
     {
         $this->db = $database;
+        $this->midtrans = $midtrans;
     }
 
     public function getPayments()
-    {        
-        $query = "SELECT p.id, u.name AS payment, p.trx_amount, p.trx_timestamp, p.details, c.virtual_account
-                FROM payments AS p INNER JOIN users AS u ON p.user_id = u.id LEFT JOIN user_class c ON c.user_id = u.id
+    {
+        $query = "SELECT
+                    p.id,
+                    u.id AS user_id,
+                    u.nama AS payment,
+                    p.jumlah_bayar as trx_amount,
+                    p.tanggal_pembayaran as trx_timestamp,
+                    j.nama as jenjang,
+                    t.nama as tingkat,
+                    k.nama as kelas,
+                    u.va as virtual_account,
+                    b.id AS id_relasi
+                FROM
+                    spp_pembayaran_tagihan b LEFT JOIN
+                    spp_pembayaran AS p ON b.pembayaran_id = p.id LEFT JOIN
+                    siswa AS u ON p.siswa_id = u.id LEFT JOIN
+                    jenjang j ON j.id = u.jenjang_id LEFT JOIN
+                    tingkat t ON t.id = u.tingkat_id LEFT JOIN
+                    kelas k ON k.id = u.kelas_id
                 WHERE TRUE ";
 
         if (!empty($_GET['search'])) {
@@ -53,7 +63,7 @@ class PaymentBE
 
             $years = [
                 'min' => "$academicYear[0]-07-01",
-                'max' => "$academicYear[1]-06-30"
+                'max' => "$academicYear[1]-06-30",
             ];
 
             $query .= " AND p.trx_timestamp BETWEEN '$years[min]' AND '$years[max]'";
@@ -67,26 +77,13 @@ class PaymentBE
         return $this->db->fetchAll($result);
     }
 
-    public function getFeeCategories()
-    {
-        $query = "SELECT * FROM fee_categories";
-        $result = $this->db->query($query);
-        return $this->db->fetchAll($result);
-    }
-
     protected function getPaymentFormat()
     {
         $spreadsheet = new Spreadsheet();
 
         $sheet = $spreadsheet->getActiveSheet();
 
-        $headers = [
-            'NIS',             
-            'Virtual Account',            
-            'Trx Amount',         
-            'Notes',         
-            'Timestamp',  
-        ];
+        $headers = ['NIS', 'Virtual Account', 'Trx Amount'];
 
         $sheet->fromArray([$headers], null, 'A1');
 
@@ -100,7 +97,7 @@ class PaymentBE
             'font' => [
                 'bold' => true,
             ],
-            'alignment' => [ 
+            'alignment' => [
                 'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
             ],
         ];
@@ -124,7 +121,7 @@ class PaymentBE
         header('Cache-Control: max-age=0');
 
         $writer->save('php://output');
-        exit;
+        exit();
     }
 
     public function importPaymentsFromXLSX()
@@ -150,7 +147,8 @@ class PaymentBE
         $processedRowCount = 0;
         $importedRowCount = 0;
 
-        try{
+        // ! Proses File XLSX
+        try {
             $spreadsheet = IOFactory::load($filePath);
             $sheet = $spreadsheet->getActiveSheet();
             $highestRow = $sheet->getHighestDataRow();
@@ -175,7 +173,6 @@ class PaymentBE
                 $va = trim($rowData['B'] ?? '');
                 $trxAmount = trim($rowData['C'] ?? '');
                 $notes = trim($rowData['D'] ?? '');
-                $timestampRaw = trim($rowData['E'] ?? '');
 
                 if ($nis === '') {
                     $rowErrors[] = 'NIS is required.';
@@ -187,34 +184,19 @@ class PaymentBE
                     $rowErrors[] = 'Transaction Amount is required.';
                 }
 
-                $timestamp = Call::timestamp();
-                if (!empty($timestampRaw)) {
-                    try {
-                        if (is_numeric($timestampRaw)) {
-                            $timestamp = ExcelDate::excelToDateTimeObject($timestampRaw)->format('Y-m-d');
-                        } else {
-                            $dateTime = new DateTime(str_replace('/', '-', $timestampRaw));
-                            $timestamp = $dateTime->format('Y-m-d');
-                        }
-                    } catch (Exception $e) {
-                        $rowErrors[] = 'Timestamp invalid.';
-                    }
-                }
-
                 if (!empty($rowErrors)) {
                     $errorRowsData[] = [
                         'original_data' => $originalRowValues,
                         'errors' => implode('; ', $rowErrors),
                     ];
                     continue;
-                } 
+                }
 
                 $importedRowCount++;
-                if(isset($validPaymentData[$va])){
+                if (isset($validPaymentData[$va])) {
                     $d = $validPaymentData[$va];
                     $d['trxAmount'] += $trxAmount;
                     $d['notes'][] = $notes;
-                    $d['timestmap'] = (new DateTime($d['timestmap']) > new DateTime($timestamp)) ? $d['timestmap'] : $timestamp;
                 } else {
                     $vaList[] = $va;
 
@@ -223,203 +205,160 @@ class PaymentBE
                         'va' => $va,
                         'trxAmount' => $trxAmount,
                         'notes' => [$notes],
-                        'timestamp' => $timestamp
                     ];
                 }
             }
-
         } catch (\Exception $e) {
             error_log('Error processing XLSX file or class list: ' . $e->getMessage());
             return ApiResponse::error('Error reading, processing the XLSX file, or loading class data.', 500);
         }
 
         // Get Bill lists
-        $vaString = implode(",", $vaList);
+        $vaString = implode(',', $vaList);
         $billQuery = "SELECT
-                        virtual_account, (SUM(trx_amount) + SUM(late_fee)) AS trx_amount
-                      FROM 
-                        bills
-                      WHERE 
-                        trx_status IN (?,?) AND
-                        virtual_account IN ($vaString)
-                      GROUP BY 
-                        virtual_account";
-        $status = $this->status;
-        $billStmt = $this->db->query($billQuery, [$status['active'], $status['unpaid']]);
+                        s.va as virtual_account, (b.total_nominal + b.denda) AS trx_amount
+                      FROM
+                        spp_tagihan b JOIN siswa s ON b.siswa_id = s.id
+                      WHERE
+                        b.status = 'belum_lunas' AND
+                        s.va IN ($vaString)";
+
+        $billStmt = $this->db->query($billQuery);
         $billAmountResult = $this->db->fetchAll($billStmt);
         $billAmounts = [];
         $paymentData = [];
-        foreach($billAmountResult as $amount){
+        foreach ($billAmountResult as $amount) {
             $billAmounts[$amount['virtual_account']] = $amount['trx_amount'];
         }
 
-        foreach($validPaymentData as $va => $detail){
-            if((float)$billAmounts[$va] == (float)$detail['trxAmount']){
+        foreach ($validPaymentData as $va => $detail) {
+            if ((float) $billAmounts[$va] == (float) $detail['trxAmount']) {
                 $paymentData['va'][] = $va;
                 $paymentData['detail'][] = $detail;
             } else {
-                $requiredAmount = FormatHelper::formatRupiah((float)$billAmounts[$va]);
-                $inputtedAmount = FormatHelper::formatRupiah((float)$detail['trxAmount']);
+                $requiredAmount = FormatHelper::formatRupiah((float) $billAmounts[$va]);
+                $inputtedAmount = FormatHelper::formatRupiah((float) $detail['trxAmount']);
                 $errorRowsData[] = [
-                    'original_data' => [
-                        $detail['nis'], $detail['va'], $detail['trxAmount'],
-                        $detail['notes'], $detail['timestamp']
-                    ],
+                    'original_data' => [$detail['nis'], $detail['va'], $detail['trxAmount'], $detail['notes']],
                     'errors' => "Invalid Value! needing $requiredAmount, but only inputed amount $inputtedAmount",
                 ];
             }
         }
 
-        
-        $vaString = implode(",", $paymentData['va']);
+        $vaString = implode(',', $paymentData['va']);
         $billDetailQuery = "SELECT
-                                b.id, b.user_id, b.virtual_account, 
-                                b.trx_detail, u.parent_phone
+                                b.id, b.siswa_id as user_id, u.va as virtual_account,
+                                u.no_hp_ortu as parent_phone, b.midtrans_trx_id
                             FROM
-                                bills b INNER JOIN
-                                users u ON u.id = b.user_id
+                                spp_tagihan b INNER JOIN
+                                siswa u ON u.id = b.siswa_id
                             WHERE
-                                virtual_account IN ($vaString) AND
-                                trx_status IN (?, ?)";
-        $billDetailStmt = $this->db->query($billDetailQuery, [$status['active'], $status['unpaid']]);
+                                u.va IN ($vaString)";
+        $billDetailStmt = $this->db->query($billDetailQuery);
 
         $detailData = [];
-        $paymentData = [];
         $billId = [];
         $waMsg = [];
 
-        foreach($this->db->fetchAll($billDetailStmt) as $r){
-            $va = $r['virtual_account'];
-            $billId[] = $r['id'];
-            $items = [];
-            $total = (float)0;
-            $convertedDetails= json_decode($r['trx_detail'], true);
-            foreach($convertedDetails['items'] as $item){
-                $items[] = [
-                    "item_name" => $item['item_name'],
-                    "amount" => $item['amount'],
-                    "billing_month" => $convertedDetails['billing_month']
-                ];
-                $total += (float)$item['amount'];
-            }
-            if (!isset($detailData[$va])){
-                $detailData[$va] = [
-                    "name" => $convertedDetails['name'] ?? "",
-                    "virtual_account" => $r['virtual_account'] ?? '',
-                    "class" => $convertedDetails['class'] ?? "",
-                    "items" => $items ?? [],
-                    "notes" => $r['notes'] ?? "",
-                    "total_payment" => $total,
-                    "confirmation_date" => Call::timestamp(),
-                ];
-            } else {
-                array_push($detailData[$va]['items'], ...$items);
-                $detailData[$va]['total_payment'] += (float)$total;
-            }
-
-            $bill_id = ($paymentData[$va]["bill_id"] ?? 0) > $r['id'] ? $paymentData[$va]["bill_id"] : $r['id'];
-
-            $paymentData[$va] = [
-                "bill_id" => $bill_id,
-                "user_id" => $r['user_id'],
-                "trx_amount" => $validPaymentData[$va]['trxAmount'],
-                "trx_timestamp" => $validPaymentData[$va]['timestamp'],
-                "details" => json_encode($detailData[$va])
-            ];
-
-            $url = $_SERVER['HTTP_HOST'];
-            $encrypted = $this->generateInvoiceURL($r['user_id'], $bill_id);
-
-            $waMsg[$va] = [
-                'target' => $r['parent_phone'],
-                'message' => "Pembayaran SPP untuk $convertedDetails[name] telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
-                    http://$url/invoice/$encrypted",
-                'delay' => '1'
-            ];
-        }
-
-        $paymentFinal = [];
-        foreach($paymentData as $data){
-            $paymentFinal[] = $data;
-        }
-
-        $queueMsg = [];
-        foreach($waMsg as $msg){
-            $queueMsg[] = $msg;
-        }
-
-        if(!empty($errorRowsData)){
-            $errorSpreadsheet = new Spreadsheet();
-            $errorSheet = $errorSpreadsheet->getActiveSheet();
-            $outputHeaders = array_values($originalHeaders);
-            $outputHeaders[] = 'Errors';
-            $errorSheet->fromArray([$outputHeaders], null, 'A1');
-
-            $errorRowIndex = 2;
-            foreach ($errorRowsData as $errorDetail) {
-                $outputRow = $errorDetail['original_data'];
-                $outputRow[] = $errorDetail['errors'];
-                $errorSheet->fromArray($outputRow, null, 'A' . $errorRowIndex, true);
-                $errorRowIndex++;
-            }
-
-            $highestColumn = $errorSheet->getHighestColumn();
-            foreach (range('A', $highestColumn) as $columnID) {
-                $errorSheet->getColumnDimension($columnID)->setAutoSize(true);
-            }
-
-            $headerStyle = [
-                'font' => ['bold' => true],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-            ];
-
-            $errorSheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
-
-            $writer = new Xlsx($errorSpreadsheet);
-            if (ob_get_length()) {
-                ob_end_clean();
-            }
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment; filename="import_payments_errors.xlsx"');
-            header('Cache-Control: max-age=0');
-            $writer->save('php://output');
-        }
-
-        try{
+        try {
             $this->db->beginTransaction();
-            
-            $paymentResult = $this->db->insert('payments', $paymentFinal);
-            if(!$paymentResult){
-                throw new Exception("Failed to input Payment to Database");
+
+            foreach ($this->db->fetchAll($billDetailStmt) as $r) {
+                $va = $r['virtual_account'];
+                $billId[] = $r['id'];
+
+
+                $bill_id = ($paymentData[$va]['bill_id'] ?? 0) > $r['id'] ? $paymentData[$va]['bill_id'] : $r['id'];
+                $bill = $this->db->find('spp_tagihan', ['id' => $bill_id]);
+
+                $pembayaran = $this->db->insert('spp_pembayaran', [
+                    'siswa_id' => $bill['siswa_id'],
+                    'tanggal_pembayaran' => Call::timestamp(),
+                    'jumlah_bayar' => $bill['total_nominal'] + $bill['denda'],
+                ]);
+                $this->db->update('spp_tagihan_detail', ['lunas' => 1, 'pembayaran_id' => $pembayaran], ['tagihan_id' => $r['id'], 'lunas' => 0]);
+                $relasi_tagihan = $this->db->insert('spp_pembayaran_tagihan', [
+                    'pembayaran_id' => $pembayaran,
+                    'tagihan_id' => $bill_id,
+                    'jumlah' => $bill['total_nominal'] + $bill['denda'],
+                ]);
+                $this->db->update(
+                    'spp_tagihan',
+                    [
+                        'total_nominal' => 0,
+                        'count_denda' => 0,
+                        'denda' => 0,
+                        'status' => 'lunas',
+                    ],
+                    ['id' => $bill_id],
+                );
+
+                $this->midtrans->cancelTransaction($r['midtrans_trx_id']);
+
+                $url = $_SERVER['HTTP_HOST'];
+                $encrypted = $this->generateInvoiceURL($r['user_id'], $relasi_tagihan);
+
+                $waMsg[$va] = [
+                    'target' => $r['parent_phone'],
+                    'message' => "Pembayaran SPP telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
+                    http://$url/invoice/$encrypted",
+                    'delay' => '1',
+                ];
             }
 
-            $now = Call::timestamp();
-            $b = implode(',', $billId);
-
-            $q = "UPDATE 
-                    bills b 
-                  SET 
-                    b.trx_status = CASE
-                        WHEN b.trx_status = '$status[unpaid]' THEN '$status[late]'
-                        WHEN b.trx_status = '$status[active]' THEN '$status[paid]'
-                    END,
-                    b.trx_detail = JSON_SET(b.trx_detail, '$.status', b.trx_status, '$.payment_date', '$now')
-                  WHERE b.id IN ($b)";
-
-            $updateBillStmt = $this->db->prepare($q);
-            if(!$updateBillStmt){
-                throw new Exception("Failed to input Payment to Database");
+            $paymentFinal = [];
+            foreach ($paymentData as $data) {
+                $paymentFinal[] = $data;
             }
 
-            $updateBillStmt->execute();
+            $queueMsg = [];
+            foreach ($waMsg as $msg) {
+                $queueMsg[] = $msg;
+            }
+
+            if (!empty($errorRowsData)) {
+                $errorSpreadsheet = new Spreadsheet();
+                $errorSheet = $errorSpreadsheet->getActiveSheet();
+                $outputHeaders = array_values($originalHeaders);
+                $outputHeaders[] = 'Errors';
+                $errorSheet->fromArray([$outputHeaders], null, 'A1');
+
+                $errorRowIndex = 2;
+                foreach ($errorRowsData as $errorDetail) {
+                    $outputRow = $errorDetail['original_data'];
+                    $outputRow[] = $errorDetail['errors'];
+                    $errorSheet->fromArray($outputRow, null, 'A' . $errorRowIndex, true);
+                    $errorRowIndex++;
+                }
+
+                $highestColumn = $errorSheet->getHighestColumn();
+                foreach (range('A', $highestColumn) as $columnID) {
+                    $errorSheet->getColumnDimension($columnID)->setAutoSize(true);
+                }
+
+                $headerStyle = [
+                    'font' => ['bold' => true],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+                ];
+
+                $errorSheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
+
+                $writer = new Xlsx($errorSpreadsheet);
+                if (ob_get_length()) {
+                    ob_end_clean();
+                }
+                header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                header('Content-Disposition: attachment; filename="import_payments_errors.xlsx"');
+                header('Cache-Control: max-age=0');
+                $writer->save('php://output');
+            }
             $messages = json_encode($queueMsg);
-            $fonnte = Fonnte::sendMessage(['data' => $messages]);
-
+            Fonnte::sendMessage(['data' => $messages]);
             $this->db->commit();
 
-            return ApiResponse::success($fonnte, 'Upload Payments successful');
-        } catch (Exception $e){
-            return ApiResponse::error("Failed to save payments to database: " . $e->getMessage());
+            return ApiResponse::success(null, 'Upload Payments successful');
+        } catch (Exception $e) {
+            return ApiResponse::error('Failed to save payments to database: ' . $e->getMessage());
         }
     }
 
@@ -453,104 +392,114 @@ class PaymentBE
 
         $string = openssl_decrypt($cipherText, $method, $key, 0, $iv);
 
-        if(!$string){
+        if (!$string) {
             return [
                 'status' => false,
-                'error' => "Failed to Decrypt Details"
+                'error' => 'Failed to Decrypt Details',
             ];
         }
 
-        // list($user, $bill) = explode("|-|", $string);
-        $encrypted = explode("|-|", $string);
-        if(count($encrypted) != 2){
+        $encrypted = explode('|-|', $string);
+        if (count($encrypted) != 2) {
             return [
                 'status' => false,
-                'error' => "Invalid Details"
+                'error' => 'Invalid Details',
             ];
         }
-        list($user, $bill) = $encrypted;
+        [$siswa, $bill] = $encrypted;
 
-        $query = "SELECT
-                    details
-                  FROM
-                    payments
-                  WHERE
-                    bill_id = ? AND user_id = ?";
-        
-        $stmt = $this->db->query($query, [$bill, $user]);
-        $result = $this->db->fetchAssoc($stmt);
-
-        if(!$result){
+        $paymentRelation = $this->db->find('spp_pembayaran_tagihan', ['id' => $bill]);
+        $tagihan = $this->db->find('spp_tagihan', [
+            'id' => $paymentRelation['tagihan_id'],
+            'siswa_id' => $siswa
+        ]);
+        if(empty($tagihan)){
             return [
                 'status' => false,
-                'error' => "Payment Not Found"
+                'meta' => [
+                    'nama' => '',
+                    'kelas' => '',
+                    'va' => '',
+                    'date' => '',
+                    'total' => ''
+                ],
+                'details' => []
             ];
         }
+        $detailTagihan = $this->db->findAll('spp_tagihan_detail', [
+            'tagihan_id' => $tagihan['id'],
+            'pembayaran_id' => $paymentRelation['pembayaran_id']
+        ]);
 
+        $pembayaran = $this->db->find('spp_pembayaran', ['id' => $paymentRelation['pembayaran_id']]);
+        $siswa = $this->db->find('siswa', ['id' => $siswa]);
+
+        $jenjang = $this->db->find('jenjang', ['id' => $siswa['jenjang_id']]);
+        $tingkat = $this->db->find('tingkat', ['id' => $siswa['tingkat_id']]);
+        $kelas = $this->db->find('kelas', ['id' => $siswa['kelas_id']]);
         return [
             'status' => true,
-            'details' => $result 
+            'meta' => [
+                'nama' => $siswa['nama'],
+                'kelas' => $kelas ? "$jenjang[nama] $tingkat[nama] {$kelas['nama']}" : "$jenjang[nama] $tingkat[nama]",
+                'va' => $siswa['va'],
+                'date' => $pembayaran['tanggal_pembayaran'],
+                'total' => $pembayaran['jumlah_bayar']
+            ],
+            'details' => $detailTagihan,
         ];
     }
 
     public function getPublicInvoice($segments)
     {
         array_shift($segments);
-        $cyper = implode("/", $segments);
+        $cyper = implode('/', $segments);
         $data = $this->decryptInvoiceCode($cyper);
         return $data;
     }
 
     public function exportPublicInvoice($segments)
     {
-        array_shift($segments);
-        $cyper = implode("/", $segments);
-        $decryptionResult = $this->decryptInvoiceCode($cyper);
-
+        $decryptionResult = $this->decryptInvoiceCode($segments[0]);
+ 
         if (!$decryptionResult['status']) {
-            return ApiResponse::error("Code decryption error", 404);
-            exit;
+            return ApiResponse::error($decryptionResult['error'] ?? 'Gagal memuat data invoice.', 404);
         }
 
-        $paymentDetailsJson = $decryptionResult['details']['details'] ?? null;
+        $invoiceMeta = $decryptionResult['meta'];
+        $invoiceItems = $decryptionResult['details'];
 
-        if ($paymentDetailsJson === null) {
-            return ApiResponse::error("Payment details JSON is missing for invoice code");
-            exit;
-        }
-
-        $invoiceData = json_decode($paymentDetailsJson, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return ApiResponse::error("Failed to parse payment details JSON");
-        }
-
-        try {
+       try {
             $mpdf = new Mpdf([
                 'format' => 'A4',
                 'margin_left' => 15,
                 'margin_right' => 15,
                 'margin_top' => 20,
                 'margin_bottom' => 20,
-                'tempDir' => sys_get_temp_dir() . '/mpdf' 
+                'tempDir' => sys_get_temp_dir() . '/mpdf',
             ]);
 
-            $studentName = htmlspecialchars($invoiceData['name'] ?? '');
-            $studentClass = htmlspecialchars($invoiceData['class'] ?? '');
-            $virtualAccount = htmlspecialchars($invoiceData['virtual_account'] ?? '');
-            $confirmationDate = '';
-             if (isset($invoiceData['confirmation_date'])) {
-                 try {
-                     $dt = new DateTime($invoiceData['confirmation_date']);
-                     $confirmationDate = $dt->format('d F Y H:i:s');
-                 } catch (Exception $e) {
-                      $confirmationDate = htmlspecialchars($invoiceData['confirmation_date']) . ' (Invalid Format)';
-                      error_log("Invalid date format in confirmation_date for PDF: " . $invoiceData['confirmation_date']);
-                 }
-             }
-            $totalPayment = isset($invoiceData['total_payment']) ? FormatHelper::formatRupiah((float)$invoiceData['total_payment']) : '';
-            $items = $invoiceData['items'] ?? [];
-            $notes = isset($invoiceData['notes']) ? nl2br(htmlspecialchars($invoiceData['notes'])) : '';
-            $displayCode = htmlspecialchars($cyper);
+            // Gunakan data dari $invoiceMeta
+            $studentName = htmlspecialchars($invoiceMeta['nama'] ?? '');
+            $studentClass = htmlspecialchars($invoiceMeta['kelas'] ?? '');
+            $virtualAccount = htmlspecialchars($invoiceMeta['va'] ?? '');
+            $totalPayment = isset($invoiceMeta['total']) ? FormatHelper::formatRupiah((float) $invoiceMeta['total']) : 'Rp 0';
+            $displayCode = htmlspecialchars($segments[0]);
+            
+            // Format tanggal pembayaran
+            $confirmationDate = 'N/A';
+            if (!empty($invoiceMeta['date'])) {
+                try {
+                    $dt = new DateTime($invoiceMeta['date']);
+                    $confirmationDate = $dt->format('d F Y H:i:s');
+                } catch (Exception $e) {
+                    $confirmationDate = htmlspecialchars($invoiceMeta['date']) . ' (Format Salah)';
+                    error_log('Invalid date format in confirmation_date for PDF: ' . $invoiceMeta['date']);
+                }
+            }
+            
+            // Variabel 'notes' tidak ada di hasil dekripsi, jadi kita kosongkan saja.
+            $notes = '';
 
             $html = <<<HTML
             <!DOCTYPE html>
@@ -562,7 +511,6 @@ class PaymentBE
                     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #333; }
                     .container { padding: 10px; }
                     .header { border-bottom: 2px solid #6b7280; margin-bottom: 24px; padding-bottom: 12px; }
-                    .header-flex { display: flex; justify-content: space-between; align-items: flex-start; } /* Basic flex sim */
                     .invoice-title h1 { font-size: 1.5rem; font-weight: bold; margin: 0; }
                     .invoice-title p { font-size: 0.75rem; color: #3b82f6; font-style: italic; margin: 4px 0 0 0; }
                     .payment-date { text-align: right; font-weight: 600; color: #9ca3af; }
@@ -570,7 +518,7 @@ class PaymentBE
                     .payment-date p.date { font-size: 0.875rem; margin: 4px 0 0 0; color: #4b5563; }
                     .student-details { margin-bottom: 16px; font-size: 0.875rem; }
                     .student-details table td { padding: 2px 8px 2px 0; vertical-align: top; }
-                    .student-details table td:first-child { font-weight: normal; } /* Adjusted from original bold */
+                    .student-details table td:first-child { font-weight: normal; }
                     .items-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.875rem; }
                     .items-table thead { background-color: #f9fafb; }
                     .items-table th { text-transform: uppercase; font-size: 0.75rem; color: #374151; border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; }
@@ -620,7 +568,7 @@ class PaymentBE
                     <table class="items-table">
                         <thead>
                             <tr>
-                                <th scope="col">Nama</th>
+                                <th scope="col">Nama Tagihan</th>
                                 <th scope="col" class="text-center">Periode</th>
                                 <th scope="col" class="text-right">Biaya</th>
                             </tr>
@@ -628,27 +576,24 @@ class PaymentBE
                         <tbody>
             HTML;
 
-            if (!empty($items)) {
-                foreach ($items as $item) {
-                    $itemNameRaw = htmlspecialchars($item['item_name'] ?? '');
-                    $itemDisplayName = $itemNameRaw;
-                     if ($itemNameRaw == "monthly_fee") {
-                         $itemDisplayName = "Tagihan Bulanan";
-                     } elseif ($itemNameRaw == "late_fee") {
-                         $itemDisplayName = "Biaya Keterlambatan";
-                     }
-                    $itemAmount = isset($item['amount']) ? FormatHelper::formatRupiah((float)$item['amount']) : '';
-                    $billingMonth = htmlspecialchars($item['billing_month'] ?? '');
+            if (!empty($invoiceItems)) {
+                foreach ($invoiceItems as $item) {
+                    // Gunakan nama kolom aktual dari tabel `spp_tagihan_detail`
+                    // Asumsi: 'nama_pembayaran', 'periode', 'jumlah'
+                    $itemName = htmlspecialchars($item['nama_pembayaran'] ?? 'Item tidak diketahui');
+                    $billingPeriod = htmlspecialchars($item['periode'] ?? '-'); // Ganti 'periode' jika nama kolomnya berbeda
+                    $itemAmount = isset($item['jumlah']) ? FormatHelper::formatRupiah((float) $item['jumlah']) : 'Rp 0';
+
                     $html .= <<<HTML
                             <tr>
-                                <td scope="row" style="font-weight: 500; color: #111827; white-space: nowrap;">{$itemDisplayName}</td>
-                                <td class="text-center">{$billingMonth}</td>
+                                <td scope="row" style="font-weight: 500; color: #111827;">{$itemName}</td>
+                                <td class="text-center">{$billingPeriod}</td>
                                 <td class="text-right">{$itemAmount}</td>
                             </tr>
                     HTML;
                 }
             } else {
-                $html .= "<tr><td colspan='3' style='text-align: center; padding: 20px;'>No itemized details available.</td></tr>";
+                $html .= "<tr><td colspan='3' style='text-align: center; padding: 20px;'>Tidak ada rincian item.</td></tr>";
             }
 
             $html .= <<<HTML
@@ -660,6 +605,9 @@ class PaymentBE
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+            </body>
+            </html>
             HTML;
 
             $mpdf->WriteHTML($html);
@@ -669,16 +617,78 @@ class PaymentBE
             }
 
             $safeName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $studentName);
-            $fileName = "Invoice_" . $safeName . "_" . date('Ymd') . ".pdf";
+            $fileName = 'Invoice_' . $safeName . '_' . date('Ymd') . '.pdf';
 
             $mpdf->Output($fileName, Destination::DOWNLOAD);
 
-            exit;
-
+            exit();
         } catch (\Mpdf\MpdfException $e) {
             return ApiResponse::error($e->getMessage());
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage());
+        }
+    }
+
+    public function midtransCallback()
+    {
+        $json_callback = file_get_contents('php://input');
+        $data = json_decode($json_callback, true);
+
+        try {
+            $notif = $this->midtrans->getNotificationHandler();
+
+            // Ambil data penting dari notifikasi
+            $transactionStatus = $notif->transaction_status;
+            $orderId = $notif->order_id;
+            $grossAmount = $notif->gross_amount;
+            $paymentType = $notif->payment_type;
+            $fraudStatus = $notif->fraud_status;
+
+            $bill = $this->db->find('spp_tagihan', ['midtrans_trx_id' => $orderId]);
+
+            if (!$bill) {
+                error_log('Midtrans callback for unknown order_id: ' . $orderId);
+                return ApiResponse::error(['message' => 'Order ID not found in database.']); // Kembalikan 200 OK
+            }
+
+            if ($transactionStatus == 'settlement') {
+                $this->db->update('spp_tagihan', [
+                    'status' => 'lunas', 
+                    'denda' => 0, 
+                    'count_denda' => 0, 
+                    'total_nominal' => 0
+                ], ['id' => $bill['id']]);
+                $payment = $this->db->insert('spp_pembayaran', [
+                    'siswa_id' => $bill['siswa_id'],
+                    'tanggal_pembayaran' => Call::timestamp(),
+                    'jumlah_bayar' => $grossAmount,
+                ]);
+                $this->db->update('spp_tagihan_detail', ['lunas' => 1, 'pembayaran_id' => $payment], ['tagihan_id' => $bill['id'], 'lunas' => 0]);
+                $relasiTagihan = $this->db->insert('spp_pembayaran_tagihan', [
+                    'pembayaran_id' => $payment,
+                    'tagihan_id' => $bill['id'],
+                    'jumlah' => $grossAmount,
+                ]);
+                error_log('Transaction order_id: ' . $orderId . ' successfully settled using ' . $paymentType);
+                $url = $_SERVER['HTTP_HOST'];
+                $siswa = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+
+                $encrypted = $this->generateInvoiceURL($siswa['id'], $relasiTagihan);
+
+                $waMsg[] = [
+                    'target' => $siswa['no_hp_ortu'],
+                    'message' => "Pembayaran SPP telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
+                    http://$url/invoice/$encrypted",
+                    'delay' => '1',
+                ];
+                $messages = json_encode($waMsg);
+                Fonnte::sendMessage(['data' => $messages]);
+            }
+
+            return ApiResponse::success('Callback processed successfully');
+        } catch (\Exception $e) {
+            error_log('Error processing Midtrans callback for order_id ' . ($data['order_id'] ?? 'N/A') . ': ' . $e->getMessage() . ' at line ' . $e->getLine() . ' in ' . $e->getFile());
+            return ApiResponse::error('Callback received, but an error occurred during processing. Please check server logs for order_id: ' . ($data['order_id'] ?? 'N/A'));
         }
     }
 }

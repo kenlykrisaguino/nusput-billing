@@ -14,9 +14,8 @@ class AuthBE
     private $db;
 
     private $accessRules = [
-        USER_ROLE_SUPERADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
-        USER_ROLE_ADMIN => ['students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'logs'],
-        USER_ROLE_STUDENT => ['dashboard', 'update-password'],
+        USER_ROLE_ADMIN => ['dashboard', 'students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'laporan'],
+        USER_ROLE_STUDENT => ['student-recap', 'update-password'],
     ];
 
     public function __construct($database)
@@ -45,17 +44,14 @@ class AuthBE
             $username = $_POST['username'] ?? '';
             $password = $_POST['password'] ?? '';
 
-            $result = $this->db->query("SELECT u.* FROM users u WHERE username = '$username'");
-            $user = $this->db->fetchAssoc($result);
+            $user = $this->db->find('users', ['username' => $username] );
 
             $isValid = FormatHelper::verifyPassword($password, $user['password']);
             
-            if ($user) {
+            if ($user && $isValid) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['role'] = $user['role'];
                 Response::success($user, 'Login successful');
-            } else if(!$isValid){
-                Response::error('Invalid credentials', 401);
             } else {
                 Response::error('Invalid credentials', 401);
             }
@@ -91,7 +87,7 @@ class AuthBE
                     'user' => $result
                 ];
             }
-            $stmtSiswa = $this->db->query('SELECT * FROM siswa WHERE id = ' . $stmt['siswa_id']);
+            $stmtSiswa = $this->db->query('SELECT * FROM siswa WHERE id = ' . $result['siswa_id']);
             $student = $this->db->fetchAssoc($stmtSiswa);
             return [
                 'user' => $result,
@@ -126,15 +122,15 @@ class AuthBE
             }
 
             $user = $this->getUser();
-            $passwordQuery = "SELECT c.password FROM user_class c WHERE c.user_id = ? AND date_left IS NULL";
-            $password = $this->db->fetchAssoc($this->db->query($passwordQuery, [$user['id']]))['password'];
+            $passwordQuery = "SELECT u.password FROM users u WHERE u.id = ?";
+            $password = $this->db->fetchAssoc($this->db->query($passwordQuery, [$user['user']['id']]))['password'];
             
-            $CryptedOldPass = md5($oldPassword);
-            if($CryptedOldPass != $password){
+            $validateOldPassword = FormatHelper::verifyPassword($oldPassword, $password);
+            if(!$validateOldPassword){
                 throw new Exception("Password Lama tidak sesuai"); 
             }
 
-            $update = $this->db->update('user_class', ['password' => md5($newPassword)], ['user_id' => $user['id'], 'date_left' => null]);
+            $update = $this->db->update('users', ['password' => FormatHelper::hashPassword($newPassword)], ['id' => $user['user']['id']]);
             if(!$update){
                 throw new Exception("Error mengupdate password");
             }
@@ -143,22 +139,27 @@ class AuthBE
         } catch (\Exception $e){
             $_SESSION['msg'] = "Terjadi kesalahan saat mengubah password: ".$e->getMessage();
         } finally {
-            header("Location: /dashboard");
+            header("Location: /student-recap");
         }
         
     }
 
-    protected function generatePasswordOTP(String $va): bool|array
+    protected function generatePasswordOTP(String $username): bool|array
     {
-        $userQuery = "SELECT u.* FROM user_class c JOIN users u ON c.user_id = u.id WHERE c.virtual_account = ? AND c.date_left IS NULL";
-        $user = $this->db->fetchAssoc($this->db->query($userQuery, [$va]));
+        $user = $this->db->find('users', [
+            'username' => $username
+        ]);
+
+        $siswa = $this->db->find('siswa', [
+            'id' => $user['siswa_id']
+        ]);
 
         if(count($user) < 0){
             return false;
         }
-        $six_digit_random_number = random_int(0, 999999);
+        $sixDigitRandomNumber = random_int(0, 999999);
 
-        $token = sprintf('%06d', $six_digit_random_number);
+        $token = sprintf('%06d', $sixDigitRandomNumber);
 
         $now = Call::timestamp();
 
@@ -168,7 +169,7 @@ class AuthBE
         }
         return [
             $token,
-            $user['parent_phone']
+            $siswa['no_hp_ortu']
         ];
     }
 
@@ -209,8 +210,7 @@ class AuthBE
         $rawData = file_get_contents('php://input');
         $data = json_decode($rawData, true);
 
-        $userQuery = "SELECT u.otp_code, u.id FROM user_class c JOIN users u ON c.user_id = u.id WHERE c.virtual_account = ? AND c.date_left IS NULL";
-        $user = $this->db->fetchAssoc($this->db->query($userQuery, [$data['virtual_account']]));
+        $user = $this->db->find('users', ['username' => $data['virtual_account'], 'otp_code' => $data['otp']]);
 
         if( empty($user) || $data['otp'] != $user['otp_code']){
             return ApiResponse::error('Invalid OTP Token', 401);
@@ -230,9 +230,8 @@ class AuthBE
         try{
             $this->db->beginTransaction();
 
-            $userQuery = "SELECT u.otp_code, u.id FROM user_class c JOIN users u ON c.user_id = u.id WHERE c.virtual_account = ? AND c.date_left IS NULL";
-            $user = $this->db->fetchAssoc($this->db->query($userQuery, [$data['virtual_account']]));
-    
+            $user = $this->db->find('users', ['username' => $data['virtual_account'], 'otp_code' => $data['otp']]);
+
             if( empty($user) || $data['otp'] != $user['otp_code']){
                 throw new Exception('Invalid OTP Token');
             }
@@ -242,8 +241,8 @@ class AuthBE
             if(!$updateUser){
                 throw new Exception('Failed to remove token from database');
             }
-            $password = md5($data['password']);
-            $this->db->update('user_class', ['password' => $password], ['virtual_account' => $data['virtual_account']]);
+            $password = FormatHelper::hashPassword($data['password']);
+            $this->db->update('users', ['password' => $password], ['id' => $user['id']]);
     
             $this->db->commit();
             return ApiResponse::success(null, 'Password telah diupdate!');
@@ -251,5 +250,25 @@ class AuthBE
         } catch (\Exception $e) {
             return ApiResponse::error('Failed to update Password: '.$e->getMessage(), 500);
         }
+    }
+
+    public function aktEncryptLogin()
+    {
+        $user = $this->getUser();
+        $systemCode = "PBN";
+
+        $string = $user['user']['username']."|-|$systemCode";
+        $key = $_ENV['NUSPUT_SECRET_KEY'];
+        $method = $_ENV['ENCRYPTION_METHOD'];
+
+        $ivLength = openssl_cipher_iv_length($method);
+        $iv = openssl_random_pseudo_bytes($ivLength);
+
+        $encrypted = openssl_encrypt($string, $method, $key, 0, $iv);
+        $encrypted_with_iv = base64_encode($iv . $encrypted);
+
+        $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+        $url = "$base_url/secret-login.php?secret=".$encrypted_with_iv;
+        header('Location: '.$url, true);
     }
 }

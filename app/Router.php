@@ -37,6 +37,10 @@ class Router
                 $this->getFormat();
                 break;
 
+            case 'route-to-akt':
+                $this->app->AuthBE()->aktEncryptLogin();
+                break;
+
             default:
                 $webRouter = new WebRouter($this->app, $this);
                 $webRouter->handle($segments);

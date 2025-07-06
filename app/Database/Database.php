@@ -86,8 +86,40 @@ class Database
     }
 
     /**
-     * Mencari semua baris data dari sebuah tabel.
-     * Contoh: $db->findAll('siswa', ['kelas_id' => 5], ['nama ASC']);
+     * Mencari semua baris data dari sebuah tabel dengan kondisi yang lebih kompleks.
+     *
+     * Contoh Penggunaan:
+     * // 1. Kondisi Gleichheit (Sama Dengan)
+     * $db->findAll('siswa', ['kelas_id' => 5]);
+     * // -> WHERE `kelas_id` = 5
+     *
+     * // 2. Kondisi Ketidaksamaan (Tidak Sama Dengan)
+     * $db->findAll('spp_tagihan_detail', ['lunas' => ['!=', 1]]);
+     * // -> WHERE `lunas` != 1
+     *
+     * // 3. Kondisi Lebih Besar dari
+     * $db->findAll('produk', ['stok' => ['>', 0]]);
+     * // -> WHERE `stok` > 0
+     *
+     * // 4. Kondisi IN
+     * $db->findAll('user', ['status' => ['IN', ['active', 'pending']]]);
+     * // -> WHERE `status` IN (?, ?)
+     *
+     * // 5. Kondisi LIKE
+     * $db->findAll('siswa', ['nama' => ['LIKE', '%budi%']]);
+     * // -> WHERE `nama` LIKE ?
+     *
+     * // 6. Gabungan
+     * $db->findAll('spp_tagihan_detail', [
+     *     "tagihan_id" => 101,
+     *     "lunas" => 0,
+     *     "jenis" => ['!=', 1]
+     * ]);
+     *
+     * @param string $table Nama tabel.
+     * @param array $where Kondisi pencarian.
+     * @param array $orderBy Urutan data.
+     * @return array Hasil query.
      */
     public function findAll(string $table, array $where = [], array $orderBy = []): array
     {
@@ -97,20 +129,45 @@ class Database
         if (!empty($where)) {
             $whereParts = [];
             foreach ($where as $key => $value) {
-                if (is_null($value)) {
-                    $whereParts[] = "`$key` IS NULL";
+                if (!is_array($value)) {
+                    if (is_null($value)) {
+                        $whereParts[] = "`$key` IS NULL";
+                    } else {
+                        $whereParts[] = "`$key` = ?";
+                        $params[] = $value;
+                    }
                 } else {
-                    $whereParts[] = "`$key` = ?";
-                    $params[] = $value;
+                    if (count($value) === 2) {
+                        $operator = strtoupper($value[0]);
+                        $comparisonValue = $value[1];
+
+                        $allowedOperators = ['=', '!=', '<>', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN'];
+
+                        if (in_array($operator, $allowedOperators)) {
+                            if ($operator === 'IN' || $operator === 'NOT IN') {
+                                if (is_array($comparisonValue) && !empty($comparisonValue)) {
+                                    $placeholders = implode(', ', array_fill(0, count($comparisonValue), '?'));
+                                    $whereParts[] = "`$key` $operator ($placeholders)";
+                                    $params = array_merge($params, $comparisonValue);
+                                }
+                            } else {
+                                $whereParts[] = "`$key` $operator ?";
+                                $params[] = $comparisonValue;
+                            }
+                        }
+                    }
                 }
             }
-            $sql .= ' WHERE ' . implode(' AND ', $whereParts);
+
+            if (!empty($whereParts)) {
+                $sql .= ' WHERE ' . implode(' AND ', $whereParts);
+            }
         }
 
         if (!empty($orderBy)) {
             $sql .= ' ORDER BY ' . implode(', ', $orderBy);
         }
-
+        
         $result = $this->query($sql, $params);
         return $this->fetchAll($result);
     }

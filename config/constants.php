@@ -2,7 +2,7 @@
 
 define('USER_ROLE_SUPERADMIN', 'admin');
 define('USER_ROLE_ADMIN', 'admin');
-define('USER_ROLE_STUDENT', 'student');
+define('USER_ROLE_STUDENT', 'siswa');
 
 define('BILL_STATUS_PAID', 'paid');
 define('BILL_STATUS_UNPAID', 'unpaid');

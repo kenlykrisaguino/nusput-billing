@@ -4,7 +4,9 @@
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config/constants.php';
 
+use App\Router;
 use App\Database\Database;
+use App\Midtrans\Midtrans;
 use App\Helpers\ApiResponse;
 use App\Helpers\FormatHelper;
 use Symfony\Component\Dotenv\Dotenv;
@@ -18,14 +20,14 @@ use App\Backend\ClassBE;
 use App\Backend\FilterBE;
 use App\Backend\RecapBE;
 use App\Backend\JournalBE;
-use App\Backend\LogBE;
-use App\Router;
+use App\Backend\DashboardBE;
 
 class App
 {
     private static ?App $instance = null;
     private Database $database;
     private Router $router;
+    private Midtrans $midtrans;
 
     // Properti untuk menyimpan instance service (cache)
     private $authBE = null;
@@ -36,7 +38,7 @@ class App
     private $filterBE = null;
     private $recapBE = null;
     private $journalBE = null;
-    private $logBE = null;
+    private $dashboardBE = null;
     private $apiResponse = null;
     private $formatHelper = null;
 
@@ -48,6 +50,7 @@ class App
 
         $this->database = new Database();
         $this->router = new Router($this);
+        $this->midtrans = new Midtrans();
 
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
@@ -72,6 +75,11 @@ class App
         return $this->database;
     }
 
+    public function getMidtrans(): Midtrans
+    {
+        return $this->midtrans;
+    }
+
     public function getRouter(): Router 
     {
         return $this->router;
@@ -93,21 +101,21 @@ class App
     
     public function StudentBE() {
         if ($this->studentBE === null) {
-            $this->studentBE = new StudentBE($this->database, $this->ClassBE());
+            $this->studentBE = new StudentBE($this->database, $this->ClassBE(), $this->BillBE(), $this->midtrans);
         }
         return $this->studentBE;
     }
     
     public function PaymentBE() {
         if ($this->paymentBE === null) {
-            $this->paymentBE = new PaymentBE($this->database);
+            $this->paymentBE = new PaymentBE($this->database, $this->midtrans);
         }
         return $this->paymentBE;
     }
     
     public function BillBE() {
         if ($this->billBE === null) {
-            $this->billBE = new BillBE($this->database);
+            $this->billBE = new BillBE($this->database, $this->midtrans);
         }
         return $this->billBE;
     }
@@ -139,12 +147,11 @@ class App
         }
         return $this->journalBE;
     }
-    
-    public function LogBE() {
-        if ($this->logBE === null) {
-            $this->logBE = new LogBE($this->database);
+    public function DashboardBE() {
+        if ($this->dashboardBE === null) {
+            $this->dashboardBE = new DashboardBE($this->database);
         }
-        return $this->logBE;
+        return $this->dashboardBE;
     }
 
     // --- HELPER GETTERS ---

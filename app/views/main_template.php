@@ -40,6 +40,10 @@
         body>.flex.flex-col {
             min-height: 100%;
         }
+
+        [x-cloak] {
+            display: none !important;
+        }
     </style>
 </head>
 
@@ -59,14 +63,14 @@
             </div>
             <nav class="hidden md:flex gap-4 items-center">
                 <?php if(isset($_SESSION['role']) && $_SESSION['role'] === USER_ROLE_STUDENT): ?>
-                <a href="/dashboard" class="block text-gray-700 hover:text-sky-600 transition-colors">Dashboard</a>
+                <a href="/student-recap" class="block text-gray-700 hover:text-sky-600 transition-colors">Ringkasan</a>
                 <?php elseif(isset($_SESSION['role'])): ?>
+                <a href="/dashboard" class="block text-gray-700 hover:text-sky-600 transition-colors">Dashboard</a>
                 <a href="/students" class="block text-gray-700 hover:text-sky-600 transition-colors">Siswa</a>
                 <a href="/pembayaran" class="block text-gray-700 hover:text-sky-600 transition-colors">Pembayaran</a>
                 <a href="/tagihan" class="block text-gray-700 hover:text-sky-600 transition-colors">Tagihan</a>
-                <a href="/rekap" class="block text-gray-700 hover:text-sky-600 transition-colors">Rekap</a>
-                <a href="/penjurnalan" class="block text-gray-700 hover:text-sky-600 transition-colors">Penjurnalan</a>
-                <a href="<?= $_ENV['ACCOUNTING_SYSTEM_URL'] ?>"
+                <a href="/laporan" class="block text-gray-700 hover:text-sky-600 transition-colors">Laporan</a>
+                <a href="/route-to-akt"
                     class="block font-sm px-3 py-1.5 text-sky-500 border-2 border-sky-600 rounded-md hover:border-sky-800 hover:text-sky-800 transition-all">Sistem Akutansi</a>
                 <?php endif; ?>
                 <a href="/api/logout"
@@ -97,10 +101,8 @@
                         class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Pembayaran</a>
                     <a href="/tagihan"
                         class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Tagihan</a>
-                    <a href="/rekap"
-                        class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Rekap</a>
-                    <a href="/penjurnalan"
-                        class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Penjurnalan</a>
+                    <a href="/laporan"
+                        class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Laporan</a>
                     <a href="<?= $_ENV['ACCOUNTING_SYSTEM_URL'] ?>"
                         class="block px-3 py-2 rounded-md text-base font-medium text-sky-700 hover:bg-sky-50 hover:text-sky-900">Sistem Akutansi</a>
                     <?php endif; ?>

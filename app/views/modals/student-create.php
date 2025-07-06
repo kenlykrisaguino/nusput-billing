@@ -1,11 +1,29 @@
-<div id="create-student-modal" x-data="{ activeTab: 'bulkUpload' }"
-    @modal-opened.window="if ($event.detail.modalId === 'create-student-modal' && $event.detail.initialTab) activeTab = $event.detail.initialTab; else activeTab = 'bulkUpload';"
-    class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-[100]">
+<div id="create-student-modal" 
+    x-data="{ 
+        showModal: false, 
+        activeTab: 'bulkUpload' 
+    }"
+    @open-create-student-modal.window="
+        showModal = true;
+        activeTab = $event.detail.initialTab || 'bulkUpload';
+    "
+    @keydown.escape.window="showModal = false"
+    x-show="showModal"
+    x-transition:enter="ease-out duration-300"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="ease-in duration-200"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-[100]"
+    style="display: none;"
+    >
+    <div x-show="showModal" class="fixed inset-0" @click="showModal = false"></div>
     <div
         class="relative top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 py-6 px-8 border w-11/12 md:w-2/3 lg:w-1/2 max-w-4xl shadow-xl rounded-lg bg-white">
         <div class="flex justify-between items-center pb-3 border-b border-gray-200 mb-6">
             <h3 class="text-xl font-semibold text-gray-700">Tambah Siswa</h3>
-            <button @click="$el.closest('#create-student-modal').classList.add('hidden')"
+            <button @click="showModal = false"
                 class="text-gray-400 hover:text-gray-600 transition-colors">
                 <i class="ti ti-x text-2xl"></i>
             </button>
@@ -23,7 +41,6 @@
                     class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none">
                     Isi Form Manual
                 </button>
-
             </nav>
         </div>
 
@@ -52,7 +69,7 @@
                         <p id="bulk-file-name-display" class="mt-1 text-xs text-gray-500">Belum ada file dipilih.</p>
                     </div>
                     <div class="pt-4 flex justify-end gap-3">
-                        <button type="button" @click="$el.closest('#create-student-modal').classList.add('hidden')"
+                        <button type="button" @click="showModal = false"
                             class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium">
                             Batal
                         </button>
@@ -139,7 +156,7 @@
                         </div>
                     </div>
                     <div class="pt-6 border-t border-gray-200 flex justify-end gap-3">
-                        <button type="button" @click="$el.closest('#create-student-modal').classList.add('hidden')"
+                        <button type="button" @click="showModal = false"
                             class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium">
                             Batal
                         </button>

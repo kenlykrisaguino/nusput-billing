@@ -21,12 +21,27 @@ class ApiRouter
         $paymentBE = $this->app->PaymentBE();
         $classBE = $this->app->ClassBE();
         $filterBE = $this->app->FilterBE();
+        $journalBE = $this->app->JournalBE();
 
         $endpoint = array_shift($segments) ?? null;
 
         switch ($endpoint) {
             case 'pw':
-                ApiResponse::success(FormatHelper::hashPassword($_GET['p'] ?? ''));
+                header('Content-Type: application/json');
+                http_response_code(200);
+                echo json_encode([
+                    'pw' => FormatHelper::hashPassword($_GET['p'] ?? '')
+                ]);
+                exit;
+                break;
+            case 'journal-data':
+                ApiResponse::success($journalBE->getJournals());
+                break;
+            case 'midtrans-callback':
+                ApiResponse::success($paymentBE->midtransCallback());
+                break;
+            case 'filter-siswa':
+                ApiResponse::success($studentBE->getStudentFilter());
                 break;
             case 'jenjang':
                 ApiResponse::success($classBE->getAllJenjang());
@@ -60,6 +75,12 @@ class ApiRouter
                 $data = json_decode(file_get_contents('php://input'), true);
                 $studentBE->updateStudentData($studentId, $data);
                 break;
+            case 'get-fee-data':
+                $data = json_decode(file_get_contents('php://input'), true);
+                $billBE->getFeeDetails($data);
+            case 'update-fee-data':
+                $data = json_decode(file_get_contents('php://input'), true);
+                $billBE->updateLateFee($data);
             case 'fee-categories':
                 ApiResponse::success($studentBE->getFeeCategories());
                 break;

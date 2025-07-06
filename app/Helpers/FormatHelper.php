@@ -88,13 +88,11 @@ class FormatHelper
 
     public static function hashPassword($rawPassword)
     {
-        $hashed = hash('sha512', $rawPassword);
-        return password_hash($hashed, PASSWORD_DEFAULT); 
+        return password_hash($rawPassword, PASSWORD_DEFAULT); 
     }
 
     public static function verifyPassword($rawPassword, $hashedPassword)
     {
-        $hashed = hash('sha512', $rawPassword);
-        return password_verify($hashed, $hashedPassword);
+        return password_verify($rawPassword, $hashedPassword);
     }
 }

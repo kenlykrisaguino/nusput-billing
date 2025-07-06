@@ -22,6 +22,7 @@ class ClassBE
                     t.nama AS tingkat,
                     k.nama AS kelas,
                     st.nominal AS nominal,
+                    st.tahun,
                     (SELECT COUNT(id) FROM siswa WHERE kelas_id = k.id) AS active_student
                  FROM
                     kelas k
@@ -29,7 +30,7 @@ class ClassBE
                     JOIN jenjang j ON t.jenjang_id = j.id
                     LEFT JOIN spp_tarif st ON st.kelas_id = k.id
                  GROUP BY
-                    k.id, j.nama, t.nama, k.nama, st.nominal
+                    k.id, j.nama, t.nama, k.nama, st.nominal, st.tahun
                  ORDER BY
                     j.id, t.id, k.id";
 

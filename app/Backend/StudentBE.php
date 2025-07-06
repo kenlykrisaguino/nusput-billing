@@ -2,9 +2,11 @@
 
 namespace App\Backend;
 
+use app\Backend\BillBE;
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\FormatHelper;
+use App\Midtrans\Midtrans;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Exception;
@@ -14,11 +16,48 @@ class StudentBE
 {
     private $db;
     private $classBE;
+    private $billBE;
+    private $midtrans;
 
-    public function __construct($database, ClassBE $classBE)
+    public function __construct($database, ClassBE $classBE, BillBE $billBE, Midtrans $midtrans)
     {
         $this->db = $database;
         $this->classBE = $classBE;
+        $this->billBE = $billBE;
+        $this->midtrans = $midtrans;
+    }
+
+    /**
+     * Mengambil daftar siswa aktif sebagai filter sesuai dengan
+     * data jenjang, tingkat, dan kelas yang ada
+     */
+    public function getStudentFilter()
+    {
+        $params = ['s.deleted_at IS NULL'];
+        $filter = [];
+
+        if (!empty($_GET['filter-jenjang'])) {
+            $params[] = 's.jenjang_id = ?';
+            $filter[] = $_GET['filter-jenjang'];
+        }
+        if (!empty($_GET['filter-tingkat'])) {
+            $params[] = 's.tingkat_id = ?';
+            $filter[] = $_GET['filter-tingkat'];
+        }
+        if (!empty($_GET['filter-kelas'])) {
+            $params[] = 's.kelas_id = ?';
+            $filter[] = $_GET['filter-kelas'];
+        }
+
+        $stmt =
+            "SELECT
+                    s.id, s.nama
+                 FROM
+                    siswa s
+                 WHERE " .
+            implode(' AND ', $params) .
+            ' ORDER BY s.nama';
+        return ApiResponse::success($this->db->fetchAll($this->db->query($stmt, $filter)), 'Berhasil mendapatkan data siswa', 200);
     }
 
     /**
@@ -132,6 +171,7 @@ class StudentBE
                 'siswa_id' => $newStudentId,
             ];
             $this->db->insert('users', $userData);
+            $this->billBE->createSingularBill($newStudentId);
 
             $this->db->commit();
 
@@ -300,10 +340,11 @@ class StudentBE
                     'siswa_id' => $newStudentId,
                 ];
                 $this->db->insert('users', $userData);
+                $this->billBE->createSingularBill($newStudentId);
             }
 
             $this->db->commit();
-            return ApiResponse::success(count($validRows) . ' siswa berhasil diimpor.');
+            return ApiResponse::success(null, count($validRows) . ' siswa berhasil diimpor.');
         } catch (Exception $e) {
             $this->db->rollback();
             error_log('Gagal impor massal: ' . $e->getMessage());
@@ -426,6 +467,11 @@ class StudentBE
 
             $sppTarifCache = [];
 
+            $mdTrx = $this->db->findAll('spp_tagihan', ['is_active' => 1]);
+            foreach($mdTrx as $trx){
+                // $this->midtrans->cancelTransaction($trx['midtrans_trx_id']);
+            }
+
             // --- Proses CREATE ---
             if (!empty($studentsToCreate)) {
                 foreach ($studentsToCreate as $row) {
@@ -444,6 +490,16 @@ class StudentBE
             if (!empty($nisToDelete)) {
                 $placeholders = implode(',', array_fill(0, count($nisToDelete), '?'));
                 $this->db->query("UPDATE siswa SET deleted_at = NOW() WHERE nis IN ($placeholders)", $nisToDelete);
+                $this->db->query(
+                    "UPDATE
+                                    spp_tagihan t INNER JOIN
+                                    siswa s ON t.siswa_id = s.id
+                                  SET
+                                    t.is_active = 0
+                                  WHERE
+                                    s.nis IN ($placeholders)",
+                    $nisToDelete,
+                );
                 $this->db->query("UPDATE users u JOIN siswa s ON u.siswa_id = s.id SET u.password = NULL WHERE s.nis IN ($placeholders)", $nisToDelete);
             }
 
@@ -591,12 +647,14 @@ class StudentBE
             'siswa_id' => $newStudentId,
         ];
         $this->db->insert('users', $userData);
+
+        $this->billBE->createSingularBill($newStudentId);
     }
 
     /**
      * Logika untuk meng-update satu siswa (dipakai oleh bulk update)
      */
-    private function updateSingleStudent(array $row, array &$sppTarifCache): void
+    private function updateSingleStudent(array $row, array &$sppTarifCache)
     {
         $key = "{$row['jenjang_id']}-{$row['tingkat_id']}-{$row['kelas_id']}";
         if (!isset($sppTarifCache[$key])) {
@@ -622,7 +680,10 @@ class StudentBE
 
         $this->db->update('siswa', $studentData, ['nis' => $row['nis']]);
 
-        $this->db->update('users', ['username' => $va, 'password' => FormatHelper::hashPassword($va)], ['siswa_id' => $this->db->find('siswa', ['nis' => $row['nis']])['id']]);
+        $st = $this->db->find('siswa', ['nis' => $row['nis']]);
+
+        $this->db->update('users', ['username' => $va, 'password' => FormatHelper::hashPassword($va)], ['siswa_id' => $st['id']]);
+        $this->billBE->createSingularBill($st['id'], 'UPDATE');
     }
 
     /**
@@ -736,12 +797,14 @@ class StudentBE
             'va' => FormatHelper::formatVA($jenjang['va_code'], $nis),
             'no_hp_ortu' => $data['no_hp_ortu'] ?? null,
             'spp' => (float) $data['spp'],
+            'updated_at' => date('Y-m-d H:i:s'),
         ];
 
         try {
             $this->db->beginTransaction();
             $this->db->update('siswa', $updateData, ['id' => (int) $id]);
             $this->db->update('users', ['username' => $updateData['va']], ['siswa_id' => (int) $id]);
+
             $this->db->commit();
             return ApiResponse::success([], 'Data siswa berhasil diupdate.');
         } catch (Exception $e) {
@@ -792,10 +855,16 @@ class StudentBE
             return ApiResponse::error('Data tidak lengkap (ID Siswa atau Periode).', 400);
         }
 
+        $trx_id = Call::uuidv4();
+
         try {
             $this->db->beginTransaction();
 
             $idsFromRequest = array_filter(array_column($fees, 'id'));
+
+            $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswaId]);
+            $params = [(int) $bill['id'], (int) $month, (int) $year, ...$idsFromRequest];
+            $this->db->query("DELETE FROM spp_tagihan_detail WHERE tagihan_id = ? AND bulan = ? AND tahun = ? AND jenis NOT IN ('spp', 'late') AND lunas = 0", $params);
 
             if (!empty($idsFromRequest)) {
                 $placeholders = implode(',', array_fill(0, count($idsFromRequest), '?'));
@@ -819,6 +888,15 @@ class StudentBE
                     'keterangan' => $fee['keterangan'] ?? '',
                 ];
 
+                $this->db->insert('spp_tagihan_detail', [
+                    'tagihan_id' => $bill['id'],
+                    'jenis' => $fee['kategori'],
+                    'nominal' => (float) $fee['nominal'],
+                    'bulan' => (int) $month,
+                    'tahun' => (int) $year,
+                    'lunas' => 0,
+                ]);
+
                 if (!empty($fee['id'])) {
                     $this->db->update('spp_biaya_tambahan', $feeData, ['id' => (int) $fee['id']]);
                 } else {
@@ -826,12 +904,69 @@ class StudentBE
                 }
             }
 
+            $nominal = 0;
+            $details = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0]);
+            foreach ($details as $detail) {
+                if ($detail['jenis'] != 'late') {
+                    $nominal += $detail['nominal'];
+                }
+            }
+            $this->db->update('spp_tagihan', ['total_nominal' => $nominal, 'midtrans_trx_id' => $trx_id], ['id' => $bill['id']]);
+
+            $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
+
+            $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+            if (!$st) {
+                throw new Exception('Data siswa dengan ID ' . $bill['siswa_id'] . ' tidak ditemukan.');
+            }
+
+            $bd = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0, 'bulan' => ['<=', $bill['bulan']]]);
+            if (empty($bd)) {
+                throw new Exception('Tidak ada detail tagihan yang belum lunas untuk tagihan ID ' . $bill['id']);
+            }
+
+            $items = [];
+            $sum = 0;
+            foreach ($bd as $d) {
+                $items[] = [
+                    'id' => $d['id'],
+                    'price' => (int) $d['nominal'],
+                    'quantity' => 1,
+                    'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                ];
+                $sum += (int) $d['nominal'];
+            }
+
+            $mdResult = $this->midtrans->charge([
+                'payment_type' => 'bank_transfer',
+                'transaction_details' => [
+                    'gross_amount' => $sum,
+                    'order_id' => $trx_id,
+                ],
+                'customer_details' => [
+                    'email' => '',
+                    'first_name' => $st['nama'],
+                    'last_name' => '',
+                    'phone' => $st['no_hp_ortu'],
+                ],
+                'item_details' => $items,
+                'bank_transfer' => [
+                    'bank' => 'bni',
+                    'va_number' => $st['va'],
+                ],
+            ]);
+            if (isset($mdResult->va_numbers[0]->va_number)) {
+                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
+            } else {
+                throw new Exception('Transaksi Midtrans berhasil, namun tidak menerima VA Number.');
+            }
+
             $this->db->commit();
             return ApiResponse::success([], 'Biaya tambahan berhasil disimpan.');
         } catch (Exception $e) {
             $this->db->rollback();
             error_log("Gagal update biaya tambahan siswa #{$siswaId}: " . $e->getMessage());
-            return ApiResponse::error('Gagal menyimpan biaya tambahan.', 500);
+            return ApiResponse::error('Gagal menyimpan biaya tambahan: ' . $e->getMessage(), 500);
         }
     }
 
@@ -840,19 +975,145 @@ class StudentBE
      */
     public function deleteStudent($siswaId)
     {
-        $siswa = $this->db->find('siswa', ['id' => $siswaId]);
+       try {
+            $this->db->beginTransaction();
 
-        $update = $this->db->update(
-            'siswa',
-            [
-                'deleted_at' => Call::date(),
-            ],
-            ['id' => $siswaId],
-        );
+            $siswa = $this->db->find('siswa', ['id' => $siswaId]);
 
-        if (!$update) {
-            return ApiResponse::error('Tidak menemukan data siswa untuk dihapus', 400);
+            $update = $this->db->update(
+                'siswa',
+                [
+                    'deleted_at' => Call::date(),
+                ],
+                ['id' => $siswaId],
+            );
+
+            if (!$update) {
+                return ApiResponse::error('Tidak menemukan data siswa untuk dihapus', 400);
+            }
+
+            $bill = $this->db->update(
+                'spp_tagihan',
+                [
+                    'is_active' => 0,
+                ],
+                ['siswa_id' => $siswaId],
+            );
+
+            if (!$bill) {
+                return ApiResponse::error('Tidak menemukan data tagihan siswa untuk dihapus', 400);
+            }
+            $this->db->commit();
+            return ApiResponse::success(null, "Berhasil menonaktifkan $siswa[nama] dari sistem");
+        } catch (\Exception $e) {
+            return ApiResponse::error('Server Error: ' . $e);
         }
-        return ApiResponse::success(null, "Berhasil menonaktifkan $siswa[nama] dari sistem");
+    }
+
+    public function studentPage()
+    {
+        $user = $this->db->find('users', ['id' => $_SESSION['user_id']]);
+        return [
+            'dashboard' => $this->studentDashboard($user['siswa_id']),
+            'payments' => $this->studentPayments($user['siswa_id']),
+        ];
+    }
+
+    protected function studentDashboard($id)
+    {
+        $siswa = $this->db->find('siswa', ['id' => $id]);
+        $kelas = $this->db->fetchAssoc(
+            $this->db->query(
+                "SELECT
+                j.nama as jenjang,
+                t.nama as tingkat,
+                k.nama as kelas
+             FROM
+                siswa s LEFT JOIN
+                jenjang j ON j.id = s.jenjang_id LEFT JOIN
+                tingkat t ON t.id = s.tingkat_id LEFT JOIN
+                kelas   k ON k.id = s.kelas_id
+             WHERE
+                s.id = ?
+                ",
+                [$id],
+            ),
+        );
+        $max = $this->db->fetchAssoc(
+            $this->db->query(
+                "SELECT
+                MAX(tanggal_pembayaran) as latest_payment
+             FROM
+                spp_pembayaran
+             WHERE
+                siswa_id = ?",
+                [$id],
+            ),
+        );
+        $fee = $this->db->fetchAssoc($this->db->query('SELECT SUM(td.nominal) AS total_bills FROM spp_tagihan_detail td JOIN spp_tagihan t ON t.id = td.id WHERE t.siswa_id = ? AND td.lunas = ?', [$id, false]));
+        return array_merge($siswa, $kelas, $max, $fee);
+    }
+
+    protected function studentPayments($id)
+    {
+        $params = [
+            'id' => $id,
+            'academic_year' => $_GET['year-filter'] ?? Call::academicYear(),
+            'semester' => $_GET['semester-filter'] ?? Call::semester(),
+        ];
+
+        $params['semester'] = $params['semester'] == 1 || $params['semester'] == FIRST_SEMESTER ? FIRST_SEMESTER : SECOND_SEMESTER;
+        $monthList = Call::monthNameSemester($params['semester']);
+        $paramQuery = " AND s.id = $params[id]";
+
+        if ($params['academic_year'] != NULL_VALUE) {
+            $academicYear = explode('/', $params['academic_year'], 2);
+            $years = [
+                'min' => "$academicYear[0]-07-01",
+                'max' => "$academicYear[1]-06-30",
+            ];
+
+            $paramQuery .= " AND b.jatuh_tempo BETWEEN '$years[min]' AND '$years[max]' ";
+        }
+
+        $queryFilter = ['bulan' => [], 'tahun' => ''];
+
+        $tagihan = $this->db->find('spp_tagihan', ['siswa_id' => $id]);
+
+        if ($params['semester'] != NULL_VALUE) {
+            $year = explode('/', $params['academic_year'], 2);
+
+            if ($params['semester'] == SECOND_SEMESTER) {
+                $paramQuery .= " AND YEAR(b.jatuh_tempo) = $year[1]";
+                $queryFilter['bulan'] = [1, 2, 3, 4, 5, 6];
+                $queryFilter['tahun'] = $year[1];
+            } else {
+                $paramQuery .= " AND YEAR(b.jatuh_tempo) = $year[0]";
+                $queryFilter['bulan'] = [7, 8, 9, 10, 11, 12];
+                $queryFilter['tahun'] = $year[0];
+            }
+        }
+
+        $result = [];
+        foreach ($queryFilter['bulan'] as $trx) {
+            $data = $this->db->findAll('spp_tagihan_detail', [
+                'bulan' => $trx, 
+                'tahun' => $queryFilter['tahun'], 
+                'tagihan_id' => $tagihan['id']
+            ]);
+            $sum = 0;
+            $status = 0;
+            foreach ($data as $d) {
+                $sum += $d['nominal'];
+                $status += $d['lunas'];
+            }
+            $result[] = [
+                'bulan' => "$monthList[$trx] $queryFilter[tahun]",
+                'tagihan' => $sum,
+                'status' => $status > 0,
+            ];
+        }
+
+        return $result;
     }
 }

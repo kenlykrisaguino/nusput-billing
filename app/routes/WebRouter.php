@@ -21,13 +21,12 @@ class WebRouter
         $page = $segments[0] ?? '';
         
         if (empty($page)) {
-            $userRole = $_SESSION['user_role'] ?? 'guest';
+            $userRole = $_SESSION['role'] ?? 'guest';
             $defaultPages = [
-                'superadmin' => 'students',
                 'admin' => 'students',
-                'siswa' => 'dashboard',
+                'siswa' => 'student-recap',
             ];
-            $page = $defaultPages[$userRole] ?? 'login';
+            $page = $defaultPages[$userRole] ?? 'login.php';
             header("Location: /{$page}");
             exit;
         }

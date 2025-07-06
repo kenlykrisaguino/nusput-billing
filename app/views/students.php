@@ -62,10 +62,10 @@
                 </div>
                 <div x-show="!sidebarOpen && !isMobile" class="flex justify-center mb-2"><i
                         class="ti ti-users text-white text-xl"></i></div>
-                <div @click="document.getElementById('create-student-modal').classList.remove('hidden')"
+                <div @click="$dispatch('open-create-student-modal', { initialTab: 'bulkUpload' })"
                     :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
                     class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
-                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Siswa'"><i
+                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Siswa (Bulk)'"><i
                         class="ti ti-user-plus text-lg"></i><span x-show="sidebarOpen || isMobile"
                         :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
                         class="transition-transform duration-150">Tambah Siswa</span></div>
@@ -132,7 +132,7 @@
                                 class="text-slate-500 hover:text-sky-600 transition-colors p-1.5 rounded-md hover:bg-sky-100">
                                 <i class="ti ti-filter text-xl"></i>
                             </button>
-                            <button @click="document.getElementById('create-student-modal').classList.remove('hidden')"
+                            <button @click="$dispatch('open-create-student-modal', { initialTab: 'manualForm' })"
                                 class="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
                                 <i class="ti ti-user-plus"></i>
                                 Tambah Siswa
@@ -156,37 +156,38 @@
                                 <?php use App\Helpers\FormatHelper;
                                 $students = $data['students'] ?? ($app->StudentBE()->getStudents() ?? []); ?>
                                 <?php if (count($students) > 0) : ?>
-                                    <?php foreach($students as $student) :?>
-                                        <tr
-                                            class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
-                                            <td class="px-4 py-2 flex gap-2 items-center">
-                                                <button
-                                                    x-on:click="pages.students.openEditStudentModal('<?= htmlspecialchars($student['id'] ?? '') ?>')" title="Edit Siswa" class="text-sky-600 hover:text-sky-800"><i
-                                                        class="ti ti-pencil"></i></button>
-                                                <button
-                                                    onclick="pages.students.handleDeleteStudent('<?= htmlspecialchars($student['id'] ?? '') ?>', '<?= htmlspecialchars(addslashes($student['nama'] ?? '')) ?>')"
-                                                    title="Hapus Siswa" class="text-red-500 hover:text-red-700"><i
-                                                        class="ti ti-trash"></i></button>
-                                            </td>
-                                            <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
-                                                <?= htmlspecialchars($student['nama'] ?? '') ?><div
-                                                    class="text-xs text-slate-500 font-normal">
-                                                    <?= htmlspecialchars($student['nis'] ?? '') ?></div>
-                                            </th>
-                                            <td class="px-4 py-2 whitespace-nowrap">
-                                                <?= htmlspecialchars($student['jenjang'] ?? '') ?>
-                                                <?= htmlspecialchars($student['tingkat'] ?? '') ?>
-                                                <?= htmlspecialchars($student['kelas'] ?? '') ?></td>
-                                            <td class="px-4 py-2 whitespace-nowrap">
-                                                <?= htmlspecialchars($student['va'] ?? '') ?></td>
-                                            <td class="px-4 py-2 whitespace-nowrap">
-                                                <?= FormatHelper::formatRupiah($student['spp'] ?? 0) ?></td>
-                                            <td class="px-4 py-2 whitespace-nowrap">
-                                                <?= htmlspecialchars($student['latest_payment'] ?? '-') ?></td>
-                                            <td class="px-4 py-2 whitespace-nowrap">
-                                                <?= 'A' ?></td>
-                                        </tr>
-                                    <?php endforeach;?>
+                                <?php foreach($students as $student) :?>
+                                <tr
+                                    class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
+                                    <td class="px-4 py-2 flex gap-2 items-center">
+                                        <button
+                                            x-on:click="pages.students.openEditStudentModal('<?= htmlspecialchars($student['id'] ?? '') ?>')"
+                                            title="Edit Siswa" class="text-sky-600 hover:text-sky-800"><i
+                                                class="ti ti-pencil"></i></button>
+                                        <button
+                                            onclick="pages.students.handleDeleteStudent('<?= htmlspecialchars($student['id'] ?? '') ?>', '<?= htmlspecialchars(addslashes($student['nama'] ?? '')) ?>')"
+                                            title="Hapus Siswa" class="text-red-500 hover:text-red-700"><i
+                                                class="ti ti-trash"></i></button>
+                                    </td>
+                                    <th scope="row" class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['nama'] ?? '') ?><div
+                                            class="text-xs text-slate-500 font-normal">
+                                            <?= htmlspecialchars($student['nis'] ?? '') ?></div>
+                                    </th>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['jenjang'] ?? '') ?>
+                                        <?= htmlspecialchars($student['tingkat'] ?? '') ?>
+                                        <?= htmlspecialchars($student['kelas'] ?? '') ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['va'] ?? '') ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= FormatHelper::formatRupiah($student['spp'] ?? 0) ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($student['latest_payment'] ?? '-') ?></td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= 'A' ?></td>
+                                </tr>
+                                <?php endforeach;?>
                                 <?php else :?>
                                 <tr>
                                     <td class="px-4 py-2 text-center text-gray-500" colspan="6">Belum ada data
@@ -218,6 +219,7 @@
                                     <th class="px-4 py-3">Tingkat</th>
                                     <th class="px-4 py-3">Kelas</th>
                                     <th class="px-4 py-3">Nominal Tarif SPP</th>
+                                    <th class="px-4 py-3">Tahun</th>
                                     <th class="px-4 py-3">Digunakan oleh</th>
                                 </tr>
                             </thead>
@@ -243,6 +245,8 @@
                                     <td class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
                                         <?= \App\Helpers\FormatHelper::formatRupiah($tariff['nominal'] ?? 0) ?>
                                     </td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($tariff['tahun']) ?></td>
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         <?= htmlspecialchars($tariff['jumlah_siswa'] ?? 0) ?> siswa</td>
                                 </tr>

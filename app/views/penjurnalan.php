@@ -19,7 +19,7 @@
 
     <?php
     use App\Helpers\FormatHelper;
-    $journals = $this->journalBE->getJournals();
+    $journals = [];
     
     $per_first_day = $journals['per_first_day'] ?? 0;
     $per_tenth_day = $journals['per_tenth_day'] ?? 0;
@@ -219,5 +219,3 @@
 
     </div>
 </div>
-
-<script src="/js/pages/penjurnalan.js"></script>

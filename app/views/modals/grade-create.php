@@ -19,7 +19,6 @@
                     <select id="create_grade_level_id" x-model.number="formData.jenjang_id" required
                             class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
                         <option value="">Memuat jenjang...</option>
-                        <!-- Opsi jenjang diisi oleh Alpine.js -->
                         <template x-for="jenjang in jenjangList" :key="jenjang.id">
                             <option :value="jenjang.id" x-text="jenjang.nama"></option>
                         </template>
