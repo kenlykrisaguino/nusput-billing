@@ -53,6 +53,10 @@ class JournalBE
             $q[] = "k.id = ?";
             $p[] = $params['section'];
         }
+        if (!empty($params['bulan'])) {
+            $q[] = "d.bulan = ?";
+            $p[] = $params['bulan'];
+        }
 
         if (!empty($params['start']) && !empty($params['end'])) {
             $startDateStr = $params['start'];
@@ -107,6 +111,10 @@ class JournalBE
         if (!empty($params['section'])) {
             $q[] = "k.id = ?";
             $p[] = $params['section'];
+        }
+        if (!empty($params['bulan'])) {
+            $q[] = "d.bulan = ?";
+            $p[] = $params['bulan'];
         }
 
         if (($params['start'] != NULL_VALUE) && ($params['end'] != NULL_VALUE)) {
@@ -168,6 +176,10 @@ class JournalBE
             $q[] = "k.id = ?";
             $p[] = $params['section'];
         }
+        if (!empty($params['bulan'])) {
+            $q[] = "d.bulan = ?";
+            $p[] = $params['bulan'];
+        }
 
         if (!empty($params['start']) && !empty($params['end'])) {
             $startDateStr = $params['start'];
@@ -225,6 +237,10 @@ class JournalBE
             $q[] = "k.id = ?";
             $p[] = $params['section'];
         }
+        if (!empty($params['bulan'])) {
+            $q[] = "d.bulan = ?";
+            $p[] = $params['bulan'];
+        }
 
         if (!empty($params['start']) && !empty($params['end'])) {
             $startDateStr = $params['start'];
@@ -260,7 +276,7 @@ class JournalBE
         return $result;
     }
 
-    public function getJournals($level = NULL_VALUE, $for_akt = false, $for_export = false)
+    public function getJournals($level = NULL_VALUE, $for_akt = false, $for_export = false, $bulan = NULL_VALUE)
     {
         $journalDate = Call::splitDate(); 
 
@@ -294,6 +310,7 @@ class JournalBE
             $dateFilter = [
                 'start' => $start->format('Y-m-d'),
                 'end' => $end->format('Y-m-d'),
+                'bulan' => $bulan
             ];
         } else {
             $dateFilter = [
