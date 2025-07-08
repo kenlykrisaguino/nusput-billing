@@ -279,7 +279,7 @@ class BillBE
                         ]);
                     }
                 } else {
-                    $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
+                    // $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
                     if ($latest['bulan'] < 12) {
                         $this->db->insert('spp_tagihan_detail', [
                             'tagihan_id' => $bill['id'],
@@ -306,7 +306,7 @@ class BillBE
                             'siswa_id' => $student['id'],
                             'bulan' => $latest['bulan'] + 1,
                             'tahun' => $bill['tahun'],
-                            'jatuh_tempo' => $bill['tahun'] . '-01-10',
+                            'jatuh_tempo' => $bill['tahun'] . '-'.($bill['bulan'] + 1).'-10',
                             'total_nominal' => $count,
                             'count_denda' => $bill['count_denda'] + 1,
                             'denda' => Call::denda() * ($bill['count_denda'] + 1) + $bill['denda'],
@@ -434,6 +434,7 @@ class BillBE
             $trx_id = Call::uuidv4();
 
             $count = 0;
+            $billId = 0;
 
             if($status == 'CREATE'){
                 $billId = $this->db->insert('spp_tagihan', [
@@ -473,27 +474,29 @@ class BillBE
 
                 $detail = $this->db->update('spp_tagihan_detail', [
                     'nominal' => $st['spp']
-                ], ['tagihan_id' => $currBill['id']]);
-
+                ], ['tagihan_id' => $currBill['id'], 'jenis' => 'spp', 'bulan' => $bulan]);
+                $billId = $currBill['id'];
             }
 
-            $bd = $this->db->findAll('spp_tagihan_detail', ['id' => $st['id'], 'lunas' => 0]);
+            $bd = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $billId, 'lunas' => 0]);
 
             $items = [];
+            $sum = 0;
 
             foreach ($bd as $d) {
                 $items[] = [
                     'id' => $d['id'],
-                    'price' => $st['spp'],
+                    'price' => $d['nominal'],
                     'quantity' => 1,
                     'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
                 ];
+                $sum += $d['nominal'];
             }
 
             $mdPayload = [
                 'payment_type' => 'bank_transfer',
                 'transaction_details' => [
-                    'gross_amount' => $st['spp'],
+                    'gross_amount' => $sum,
                     'order_id' => $trx_id,
                 ],
                 'customer_details' => [
@@ -542,7 +545,7 @@ class BillBE
         ];
 
         foreach ($levels as $level) {
-            $journals = $this->journal->getJournals($level['id'], true);
+            $journals = $this->journal->getJournals($level['id'], true, false, $month - 1);
             if (in_array($level['nama'], $smk1)) {
                 if (!isset($journalData['SMK1'])) {
                     $journalData['SMK1'] = [
@@ -938,15 +941,17 @@ class BillBE
                     'tahun' => $data['year'],
                 ],
             );
+            $dendaFinal = $bill['denda'] - $initialLateFee['nominal'] + $data['lateFee'];
             $this->db->update(
                 'spp_tagihan',
                 [
-                    'denda' => $bill['denda'] - $initialLateFee['nominal'] + $data['lateFee'],
+                    'denda' => (int)$dendaFinal,
                     'midtrans_trx_id' => $trx_id,
                 ],
                 ['id' => $data['billId']],
             );
-            // $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
+
+            $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
 
             $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
             if (!$st) {
@@ -1009,17 +1014,16 @@ class BillBE
             $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
             $url = "$base_url/page/transaksi/backend/create.php";
 
-            $bulanStr = FormatHelper::formatMonthNameInBahasa($data['month']);
-
+            $bulanStr = FormatHelper::formatMonthNameInBahasa((int)$data['month']);
+            $kodeTrx = $diff >= 0 ? 'PHPD' : 'PNBD';
             // PNBD
             $postValue[] = [
-                'kode_transaksi' => 'PNBD',
+                'kode_transaksi' => $kodeTrx,
                 'tahun_ajaran' => $academicYear,
                 'sumber_dana' => 'Rutin',
                 'nama_jenjang' => $jenjang['nama'],
-                'saldo' => $diff,
-                'bulan' => $bulanStr,
-                'penggantian_denda' => true
+                'saldo' => abs($diff),
+                'bulan' => $bulanStr
             ];
 
             $json_data = json_encode($postValue);
@@ -1034,11 +1038,10 @@ class BillBE
             $response = curl_exec($ch);
             curl_close($ch);
 
-
             $this->db->commit();
             return ApiResponse::success($response);
         } catch (\Exception $e) {
-            return ApiResponse::error($e);
+            return ApiResponse::error("Gagal Mengubah Denda Tagihan: ". $e, 500, $e);
         }
     }
 }
