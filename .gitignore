@@ -1,3 +1,4 @@
 /vendor/
 .env
 nusput-billing.rar
+/node_modules

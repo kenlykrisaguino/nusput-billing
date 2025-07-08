@@ -10,258 +10,326 @@ class Database
 {
     private mysqli $connection;
 
+    /**
+     * Membuat koneksi ke database saat class dibuat.
+     */
     public function __construct()
     {
-        $config = require __DIR__ . '/../../config/database.php';  
+        $config = require __DIR__ . '/../../config/database.php';
 
-        $this->connection = new mysqli(
-            $config['host'],
-            $config['username'],
-            $config['password'],
-            $config['database']
-        );
+        $this->connection = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
 
         if ($this->connection->connect_error) {
-            die("Connection failed: " . $this->connection->connect_error);
+            die('Connection failed: ' . $this->connection->connect_error);
+        }
+
+        $this->connection->set_charset('utf8mb4');
+    }
+
+    /**
+     * Menutup koneksi saat object tidak lagi digunakan.
+     */
+    public function __destruct()
+    {
+        if (isset($this->connection)) {
+            $this->connection->close();
         }
     }
 
-    public function getConnection(): mysqli
-    {
-        return $this->connection;
-    }
-
-    public function prepare(string $sql): \mysqli_stmt|false
-    {
-         $stmt = $this->connection->prepare($sql);
-         if (!$stmt) {
-             throw new Exception("Prepare failed: (" . $this->connection->errno . ") " . $this->connection->error . " SQL: " . $sql);
-         }
-         return $stmt;
-    }
-
+    /**
+     * Menjalankan query SQL mentah dengan aman (pakai parameter).
+     * Contoh: $db->query("SELECT * FROM siswa WHERE id = ?", [1]);
+     */
     public function query(string $sql, array $params = []): mysqli_result|bool
     {
         $stmt = $this->connection->prepare($sql);
         if (!$stmt) {
-            throw new Exception("Prepare failed: " . $this->connection->error);
+            throw new Exception('Prepare failed: ' . $this->connection->error . ' | SQL: ' . $sql);
         }
 
         if ($params) {
-            $types = '';
-            foreach ($params as $param) {
-                if (is_int($param)) {
-                    $types .= 'i'; 
-                } elseif (is_double($param)) {
-                    $types .= 'd';
-                } else {
-                    $types .= 's';
-                }
-            }
+            $types = str_repeat('s', count($params));
             $stmt->bind_param($types, ...$params);
         }
 
         $stmt->execute();
-        $result = $stmt->get_result();
-        $stmt->close();
-        return $result;
+        return $stmt->get_result();
     }
 
-    public function beginTransaction(): void
+    /**
+     * Mencari satu baris data dari sebuah tabel.
+     * Contoh: $db->find('siswa', ['id' => 1], ['nama DESC', 'umur ASC']);
+     */
+    public function find(string $table, array $where, array $orderBy = []): ?array
     {
-        $this->connection->begin_transaction();
+        $whereParts = [];
+        $params = [];
+
+        foreach ($where as $key => $value) {
+            if (is_null($value)) {
+                $whereParts[] = "`$key` IS NULL";
+            } else {
+                $whereParts[] = "`$key` = ?";
+                $params[] = $value;
+            }
+        }
+
+        $orderStr = '';
+        if (!empty($orderBy)) {
+            $orderStr = ' ORDER BY ' . implode(', ', $orderBy);
+        }
+
+        $sql = "SELECT * FROM `$table` WHERE " . implode(' AND ', $whereParts) . $orderStr . ' LIMIT 1';
+
+        $result = $this->query($sql, $params);
+        return $result ? $this->fetchAssoc($result) : null;
     }
 
-    public function commit(): void
+    /**
+     * Mencari semua baris data dari sebuah tabel dengan kondisi yang lebih kompleks.
+     *
+     * Contoh Penggunaan:
+     * // 1. Kondisi Gleichheit (Sama Dengan)
+     * $db->findAll('siswa', ['kelas_id' => 5]);
+     * // -> WHERE `kelas_id` = 5
+     *
+     * // 2. Kondisi Ketidaksamaan (Tidak Sama Dengan)
+     * $db->findAll('spp_tagihan_detail', ['lunas' => ['!=', 1]]);
+     * // -> WHERE `lunas` != 1
+     *
+     * // 3. Kondisi Lebih Besar dari
+     * $db->findAll('produk', ['stok' => ['>', 0]]);
+     * // -> WHERE `stok` > 0
+     *
+     * // 4. Kondisi IN
+     * $db->findAll('user', ['status' => ['IN', ['active', 'pending']]]);
+     * // -> WHERE `status` IN (?, ?)
+     *
+     * // 5. Kondisi LIKE
+     * $db->findAll('siswa', ['nama' => ['LIKE', '%budi%']]);
+     * // -> WHERE `nama` LIKE ?
+     *
+     * // 6. Gabungan
+     * $db->findAll('spp_tagihan_detail', [
+     *     "tagihan_id" => 101,
+     *     "lunas" => 0,
+     *     "jenis" => ['!=', 1]
+     * ]);
+     *
+     * @param string $table Nama tabel.
+     * @param array $where Kondisi pencarian.
+     * @param array $orderBy Urutan data.
+     * @return array Hasil query.
+     */
+    public function findAll(string $table, array $where = [], array $orderBy = []): array
     {
-        $this->connection->commit();
+        $sql = "SELECT * FROM `$table`";
+        $params = [];
+
+        if (!empty($where)) {
+            $whereParts = [];
+            foreach ($where as $key => $value) {
+                if (!is_array($value)) {
+                    if (is_null($value)) {
+                        $whereParts[] = "`$key` IS NULL";
+                    } else {
+                        $whereParts[] = "`$key` = ?";
+                        $params[] = $value;
+                    }
+                } else {
+                    if (count($value) === 2) {
+                        $operator = strtoupper($value[0]);
+                        $comparisonValue = $value[1];
+
+                        $allowedOperators = ['=', '!=', '<>', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN'];
+
+                        if (in_array($operator, $allowedOperators)) {
+                            if ($operator === 'IN' || $operator === 'NOT IN') {
+                                if (is_array($comparisonValue) && !empty($comparisonValue)) {
+                                    $placeholders = implode(', ', array_fill(0, count($comparisonValue), '?'));
+                                    $whereParts[] = "`$key` $operator ($placeholders)";
+                                    $params = array_merge($params, $comparisonValue);
+                                }
+                            } else {
+                                $whereParts[] = "`$key` $operator ?";
+                                $params[] = $comparisonValue;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!empty($whereParts)) {
+                $sql .= ' WHERE ' . implode(' AND ', $whereParts);
+            }
+        }
+
+        if (!empty($orderBy)) {
+            $sql .= ' ORDER BY ' . implode(', ', $orderBy);
+        }
+        
+        $result = $this->query($sql, $params);
+        return $this->fetchAll($result);
     }
 
-    public function rollback(): void
-    {
-        $this->connection->rollback();
-    }
-
-     public function fetchAssoc(mysqli_result $result): array|null
+    /**
+     * Mengambil satu baris dari hasil query.
+     */
+    public function fetchAssoc(mysqli_result $result): ?array
     {
         return $result->fetch_assoc();
     }
 
+    /**
+     * Mengambil semua baris dari hasil query.
+     */
     public function fetchAll(mysqli_result $result): array
     {
         return $result->fetch_all(MYSQLI_ASSOC);
     }
 
-    public function insert(string $table, array $data): array|bool
+    /**
+     * Memasukkan data baru ke tabel. Bisa satu baris atau banyak.
+     * Contoh: $db->insert('siswa', ['nama' => 'Budi', 'nis' => '123']);
+     */
+    public function insert(string $table, array $data): int|bool
     {
         if (empty($data)) {
-            throw new Exception("insert() called with empty data");
+            return false;
         }
-    
-        $isMany = isset($data[0]) && is_array($data[0]);
-    
-        if ($isMany) {
-            $columns = array_keys($data[0]);
-            $placeholders = [];
-            $values = [];
-    
-            foreach ($data as $row) {
-                if (count($row) !== count($columns)) {
-                    throw new Exception("Mismatch in column count");
-                }
-                $placeholders[] = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
-                foreach ($row as $val) {
-                    $values[] = is_array($val) ? json_encode($val, JSON_UNESCAPED_UNICODE) : $val;
-                }
+
+        $isMulti = isset($data[0]) && is_array($data[0]);
+        $dataToInsert = $isMulti ? $data : [$data];
+
+        $columns = array_keys($dataToInsert[0]);
+        $columnSql = '`' . implode('`, `', $columns) . '`';
+
+        $rowPlaceholders = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
+        $sql = "INSERT INTO `$table` ($columnSql) VALUES " . implode(', ', array_fill(0, count($dataToInsert), $rowPlaceholders));
+
+        $values = [];
+        foreach ($dataToInsert as $row) {
+            foreach ($columns as $col) {
+                $values[] = $row[$col] ?? null;
             }
-    
-            $sql = "INSERT INTO `$table` (" . implode(', ', $columns) . ") VALUES " . implode(', ', $placeholders);
-            $this->query($sql, $values);
-    
-            $lastId = $this->connection->insert_id;
-            $count = count($data);
-            $idList = range($lastId, $lastId + $count - 1);
-            $idPlaceholders = implode(', ', array_fill(0, $count, '?'));
-            $result = $this->query("SELECT * FROM `$table` WHERE id IN ($idPlaceholders)", $idList);
-            $rows = $this->fetchAll($result);
-    
-            return array_map([$this, 'prettifyJsonFields'], $rows);
-        } else {
-            $columns = implode(', ', array_keys($data));
-            $placeholders = implode(', ', array_fill(0, count($data), '?'));
-            $values = array_map(function ($val) {
-                return is_array($val) ? json_encode($val, JSON_UNESCAPED_UNICODE) : $val;
-            }, array_values($data));
-    
-            $sql = "INSERT INTO `$table` ($columns) VALUES ($placeholders)";
-            $this->query($sql, $values);
-    
-            $insertId = $this->connection->insert_id;
-            $result = $this->query("SELECT * FROM `$table` WHERE id = ?", [$insertId]);
-            $row = $this->fetchAssoc($result);
-    
-            return $this->prettifyJsonFields($row);
         }
+
+        $stmt = $this->connection->prepare($sql);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $this->connection->error);
+        }
+
+        $types = str_repeat('s', count($values));
+        $stmt->bind_param($types, ...$values);
+        $stmt->execute();
+
+        $affectedRows = $stmt->affected_rows;
+        $lastId = $this->connection->insert_id;
+        $stmt->close();
+
+        return $affectedRows > 0 ? ($isMulti ? $affectedRows : $lastId) : false;
     }
 
-    public function update(string $table, array $data, array $where): int|false
+    /**
+     * Mengupdate data di tabel.
+     * Contoh: $db->update('siswa', ['nama' => 'Budi Baik'], ['id' => 1]);
+     */
+    public function update(string $table, array $data, array $where): int
     {
         if (empty($data) || empty($where)) {
-            throw new Exception("update() requires data for SET and WHERE clauses");
+            return 0;
         }
 
         $setParts = [];
-        $whereParts = [];
         $values = [];
-        $types = '';
-
-        foreach ($data as $key => $value) {
+        foreach (array_keys($data) as $key) {
             $setParts[] = "`$key` = ?";
-            $values[] = $value;
-            if (is_int($value)) $types .= 'i';
-            elseif (is_double($value)) $types .= 'd';
-            elseif ($value === null) $types .= 's'; // Treat null as string for binding
-            else $types .= 's';
         }
-
-        foreach ($where as $key => $value) {
-            if ($value === null) {
-                $whereParts[] = "`$key` IS NULL";
-            } else {
-                if(is_array($value)){
-                    $whereOr = [];
-                    foreach($value as $v){
-                        $whereOr[] = "`$key` = ?";
-                        $values[] = $v;
-                        if (is_int($v)) $types .= 'i';
-                        elseif (is_double($v)) $types .= 'd';
-                        else $types .= 's';
-                    }
-                    $whereParts[] = implode(' OR ', $whereOr);
-                } else {
-                    $whereParts[] = "`$key` = ?";
-                    $values[] = $value;
-                    if (is_int($value)) $types .= 'i';
-                    elseif (is_double($value)) $types .= 'd';
-                    else $types .= 's';
-                }
-            }
-        }
-
-        $sql = "UPDATE `$table` SET " . implode(', ', $setParts) . " WHERE " . implode(' AND ', $whereParts);
-
-        $stmt = $this->prepare($sql);
-        if (!$stmt) return false;
-
-        $stmt->bind_param($types, ...$values);
-        $executeResult = $stmt->execute();
-        $affectedRows = $stmt->affected_rows; // Get number of affected rows
-        $stmt->close();
-
-        return $executeResult ? $affectedRows : false;
-    }
-    
-    public function delete(string $table, array $where): int|false
-    {
-        if (empty($where)) {
-            throw new Exception("delete() requires a WHERE clause to prevent deleting all rows");
-        }
+        $values = array_values($data);
 
         $whereParts = [];
-        $values = [];
-        $types = '';
+        foreach (array_keys($where) as $key) {
+            $whereParts[] = "`$key` = ?";
+        }
+        $values = array_merge($values, array_values($where));
 
-        foreach ($where as $key => $value) {
-             if ($value === null) {
-                 $whereParts[] = "`$key` IS NULL";
-             } else {
-                 $whereParts[] = "`$key` = ?";
-                 $values[] = $value;
-                 if (is_int($value)) $types .= 'i';
-                 elseif (is_double($value)) $types .= 'd';
-                 else $types .= 's';
-             }
+        $sql = "UPDATE `$table` SET " . implode(', ', $setParts) . ' WHERE ' . implode(' AND ', $whereParts);
+
+        $stmt = $this->connection->prepare($sql);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $this->connection->error);
         }
 
-        $sql = "DELETE FROM `$table` WHERE " . implode(' AND ', $whereParts);
+        $types = str_repeat('s', count($values));
+        $stmt->bind_param($types, ...$values);
+        $stmt->execute();
 
-        $stmt = $this->prepare($sql);
-        if (!$stmt) return false;
-
-        if (!empty($values)) {
-            $stmt->bind_param($types, ...$values);
-        }
-
-        $executeResult = $stmt->execute();
         $affectedRows = $stmt->affected_rows;
         $stmt->close();
 
-        return $executeResult ? $affectedRows : false;
+        return $affectedRows;
     }
 
-    public function __destruct()
+    /**
+     * Menghapus data dari tabel.
+     * Contoh: $db->delete('siswa', ['id' => 1]);
+     */
+    public function delete(string $table, array $where): int
     {
-        if ($this->connection) {
-            $this->connection->close();
+        if (empty($where)) {
+            return 0;
         }
-    }
 
-    private function prettifyJsonFields(array $row): array
-    {
-        foreach ($row as $key => $value) {
-            if (is_string($value) && $this->isJson($value)) {
-                $decoded = json_decode($value, true);
-                if (json_last_error() === JSON_ERROR_NONE) {
-                    $row[$key] = $decoded;
-                }
-            }
+        $whereParts = [];
+        foreach (array_keys($where) as $key) {
+            $whereParts[] = "`$key` = ?";
         }
-        return $row;
+        $sql = "DELETE FROM `$table` WHERE " . implode(' AND ', $whereParts);
+
+        $stmt = $this->connection->prepare($sql);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $this->connection->error);
+        }
+
+        $types = str_repeat('s', count($where));
+        $stmt->bind_param($types, ...array_values($where));
+        $stmt->execute();
+
+        $affectedRows = $stmt->affected_rows;
+        $stmt->close();
+
+        return $affectedRows;
     }
 
-    private function isJson(string $string): bool
+    /**
+     * Mengambil ID dari baris terakhir yang di-insert.
+     */
+    public function lastInsertId(): int
     {
-        json_decode($string);
-        return json_last_error() === JSON_ERROR_NONE;
+        return $this->connection->insert_id;
+    }
+
+    /**
+     * Memulai sebuah transaksi.
+     */
+    public function beginTransaction(): void
+    {
+        $this->connection->begin_transaction();
+    }
+
+    /**
+     * Menyimpan semua perubahan dalam transaksi.
+     */
+    public function commit(): void
+    {
+        $this->connection->commit();
+    }
+
+    /**
+     * Membatalkan semua perubahan dalam transaksi.
+     */
+    public function rollback(): void
+    {
+        $this->connection->rollback();
     }
 }

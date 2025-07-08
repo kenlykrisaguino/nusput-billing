@@ -114,21 +114,23 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             dataToSend = { virtual_account: contactStep1 };
-            try{
-                response = await axios.post(API_SEND_OTP, dataToSend);
-                if (response.data && response.data.success) {
-                  currentStep++;
-                  updateModalUI();
-                } else {
-                  throw new Error(
-                    response.data.message ||
-                      "Gagal mengirim OTP. Silahkan coba lagi."
-                  );
-                }
-            } catch (error){
-                const errorMessage = error.response?.data?.message ||
-                      "Gagal mengirim OTP. Silahkan coba lagi."
-                throw new Error(errorMessage);
+            try {
+              response = await axios.post(API_SEND_OTP, dataToSend);
+              console.log(response);
+              if (response.data && response.data.success) {
+                currentStep++;
+                updateModalUI();
+              } else {
+                throw new Error(
+                  response.data.message ||
+                    "Terjadi kesalahan dalam mendapatkan OTP."
+                );
+              }
+            } catch (error) {
+              const errorMessage =
+                error.response?.data?.message ||
+                "Gagal mengirim OTP. Silahkan coba lagi.";
+              throw new Error(errorMessage);
             }
             break;
 
@@ -140,25 +142,26 @@ document.addEventListener("DOMContentLoaded", () => {
               throw new Error("Kode OTP tidak boleh kosong.");
             }
             dataToSend = { virtual_account: contactStep2, otp: otp };
-            try{
-                response = await axios.post(API_VERIFY_OTP, dataToSend); // Use axios here
-                
-                console.info(response.data);
-    
-                if (response.data && response.data.success) {
-                  currentStep++;
-                  updateModalUI();
-                } else {
-                  throw new Error(
-                    response.data.message ||
-                      "Verifikasi OTP gagal. Kode OTP salah atau kedaluwarsa."
-                  );
-                }
-                break;
+            try {
+              response = await axios.post(API_VERIFY_OTP, dataToSend); // Use axios here
+
+              console.info(response.data);
+
+              if (response.data && response.data.success) {
+                currentStep++;
+                updateModalUI();
+              } else {
+                throw new Error(
+                  response.data.message ||
+                    "Verifikasi OTP gagal. Kode OTP salah atau kedaluwarsa."
+                );
+              }
+              break;
             } catch (error) {
-                const errorMessage =
-                error.response?.data?.message || "Verifikasi OTP gagal. Kode OTP salah atau kedaluwarsa.";
-                throw new Error(errorMessage);
+              const errorMessage =
+                error.response?.data?.message ||
+                "Verifikasi OTP gagal. Kode OTP salah atau kedaluwarsa.";
+              throw new Error(errorMessage);
             }
 
           case 3:
@@ -180,24 +183,26 @@ document.addEventListener("DOMContentLoaded", () => {
               otp: otpStep3,
               password: newPassword,
             };
-            try{
-                response = await axios.post(API_RESET_PASSWORD, dataToSend); // Use axios here
-                console.info(response);
-                if (response.data && response.data.success) {
-                  alert(
-                    "Password berhasil direset. Silahkan login dengan password baru Anda."
-                  );
-                  resetModal();
-                  modal.classList.add("hidden");
-                } else {
-                  throw new Error(
-                    response.data.message ||
-                      "Gagal mereset password. Silahkan coba lagi."
-                  );
-                }
-            } catch (error){
-                const errorMessage = error.response?.data?.message || "Gagal mereset password. Silahkan coba lagi."
-                throw new Error(errorMessage);
+            try {
+              response = await axios.post(API_RESET_PASSWORD, dataToSend); // Use axios here
+              console.info(response);
+              if (response.data && response.data.success) {
+                alert(
+                  "Password berhasil direset. Silahkan login dengan password baru Anda."
+                );
+                resetModal();
+                modal.classList.add("hidden");
+              } else {
+                throw new Error(
+                  response.data.message ||
+                    "Gagal mereset password. Silahkan coba lagi."
+                );
+              }
+            } catch (error) {
+              const errorMessage =
+                error.response?.data?.message ||
+                "Gagal mereset password. Silahkan coba lagi.";
+              throw new Error(errorMessage);
             }
             break;
 

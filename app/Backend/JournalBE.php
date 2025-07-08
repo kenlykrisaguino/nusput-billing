@@ -6,7 +6,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\FormatHelper;
 use DateTime;
-
+use PhpOffice\PhpSpreadsheet\Calculation\DateTimeExcel\Date;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Pdf\Mpdf;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -32,358 +32,299 @@ class JournalBE
         $this->db = $database;
     }
 
-    protected function getUnpaidTransaction($params = [])
+    protected function schoolFeesIssuance($params = [])
     {
-        $status = $this->status;
+        $q = ["u.deleted_at IS NULL"];
+        $p = [];
 
-        $paramQuery = NULL_VALUE;
-
-        if ($params['search'] != NULL_VALUE) {
-            $paramQuery .= " AND (u.name LIKE '%$params[search]%' OR c.virtual_account LIKE '%$params[search]%')";
+        if (!empty($params['siswa'])) {
+            $q[] = "u.id = ?";
+            $p[] = $params['siswa'];
+        }
+        if (!empty($params['level'])) {
+            $q[] = "j.id = ?";
+            $p[] = $params['level'];
+        }
+        if (!empty($params['grade'])) {
+            $q[] = "t.id = ?";
+            $p[] = $params['grade'];
+        }
+        if (!empty($params['section'])) {
+            $q[] = "k.id = ?";
+            $p[] = $params['section'];
         }
 
-        if ($params['level'] != NULL_VALUE) {
-            $paramQuery .= " AND l.id = $params[level]";
-        }
-        if ($params['grade'] != NULL_VALUE) {
-            $paramQuery .= " AND g.id = $params[grade]";
-        }
-        if ($params['section'] != NULL_VALUE) {
-            $paramQuery .= " AND s.id = $params[section]";
-        }
-
-        if (($params['start_date'] != NULL_VALUE) & ($params['end_date'] != NULL_VALUE)) {
-            $startDateStr = $params['start_date'];
+        if (!empty($params['start']) && !empty($params['end'])) {
+            $startDateStr = $params['start'];
             $startDate = new DateTime($startDateStr);
-            $start_date_plus_one_month = $startDate->format('Y-m-d');
-            $endDateStr = $params['end_date'];
+            $start_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end'];
             $endDate = new DateTime($endDateStr);
-            $end_date_plus_one_month = $endDate->format('Y-m-d');
+            $end_plus_one_month = $endDate->format('Y-m-d');
 
-            $paramQuery .= " AND b.payment_due >= '$start_date_plus_one_month' AND b.payment_due <= '$end_date_plus_one_month'";
+            $q[] = "b.jatuh_tempo >= ?";
+            $p[] = $start_plus_one_month;
+            $q[] = "b.jatuh_tempo <= ?";
+            $p[] = $end_plus_one_month;
         }
 
         $query = "SELECT
             SUM(CASE
-                WHEN b.trx_status IN ('$status[active]', '$status[unpaid]') THEN b.trx_amount
+                WHEN d.jenis != 'late' AND d.lunas = false
+                THEN d.nominal
                 ELSE 0
-            END) AS bank
+            END) AS result
         FROM
-            bills b JOIN
-            users u ON b.user_id = u.id LEFT JOIN
-            user_class c ON b.virtual_account = c.virtual_account LEFT JOIN
-            levels l ON l.id = c.level_id LEFT JOIN
-            grades g ON g.id = c.grade_id LEFT JOIN
-            sections s ON s.id = c.section_id
-        WHERE
-            TRUE $paramQuery";
+            spp_tagihan_detail d JOIN
+            spp_tagihan b ON d.tagihan_id = b.id LEFT JOIN
+            siswa u ON b.siswa_id = u.id LEFT JOIN
+            jenjang j on u.jenjang_id = j.id LEFT JOIN
+            tingkat t on u.tingkat_id = t.id LEFT JOIN
+            kelas k on u.kelas_id = k.id
+        WHERE " . implode(" AND ", $q);
 
-        $result = $this->db->fetchAssoc($this->db->query($query));
+        $result = $this->db->fetchAssoc($this->db->query($query, $p));
 
         return $result;
     }
-    protected function getTransaction(bool $for_akt, $params = [] )
+    protected function schoolFeeSettlement(bool $for_akt, $params = [])
     {
-        $paramQuery = NULL_VALUE;
+        $q = ["u.deleted_at IS NULL"];
+        $p = [];
 
-        if ($params['search'] != NULL_VALUE) {
-            $paramQuery .= " AND (u.name LIKE '%$params[search]%' OR c.virtual_account LIKE '%$params[search]%')";
+        if (!empty($params['siswa'])) {
+            $q[] = "u.id = ?";
+            $p[] = $params['siswa'];
+        }
+        if (!empty($params['level'])) {
+            $q[] = "j.id = ?";
+            $p[] = $params['level'];
+        }
+        if (!empty($params['grade'])) {
+            $q[] = "t.id = ?";
+            $p[] = $params['grade'];
+        }
+        if (!empty($params['section'])) {
+            $q[] = "k.id = ?";
+            $p[] = $params['section'];
         }
 
-        if ($params['level'] != NULL_VALUE) {
-            $paramQuery .= " AND l.id = $params[level]";
-        }
-        if ($params['grade'] != NULL_VALUE) {
-            $paramQuery .= " AND g.id = $params[grade]";
-        }
-        if ($params['section'] != NULL_VALUE) {
-            $paramQuery .= " AND s.id = $params[section]";
-        }
-
-        if (($params['start_date'] != NULL_VALUE) & ($params['end_date'] != NULL_VALUE)) {
-            $startDateStr = $params['start_date'];
+        if (($params['start'] != NULL_VALUE) && ($params['end'] != NULL_VALUE)) {
+            $startDateStr = $params['start'];
             $startDate = new DateTime($startDateStr);
-            if($for_akt){
+            if ($for_akt) {
+                $startDate->modify('+10 days');
                 $startDate->modify('-1 month');
             }
-            $start_date_minus_one_month = $startDate->format('Y-m-d');
-
-            $endDateStr = $params['end_date'];
+            $start_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end'];
             $endDate = new DateTime($endDateStr);
-            if($for_akt){
-                $endDate->modify('-1 month');
-            }
-            $end_date_minus_one_month = $endDate->format('Y-m-d');
+            $end_plus_one_month = $endDate->format('Y-m-d');
 
-            $paramQuery .= " AND b.payment_due >= '$start_date_minus_one_month' AND b.payment_due <= '$end_date_minus_one_month'";
+            $q[] = "b.jatuh_tempo >= ?";
+            $p[] = $start_plus_one_month;
+            $q[] = "b.jatuh_tempo <= ?";
+            $p[] = $end_plus_one_month;
         }
 
         $query = "SELECT
-            SUM(p.trx_amount) AS amount
+            SUM(CASE
+                WHEN d.jenis != 'late' AND d.lunas = true
+                THEN d.nominal
+                ELSE 0
+            END) AS result
         FROM
-            payments p LEFT JOIN
-            bills b ON p.bill_id = b.id LEFT JOIN
-            users u ON b.user_id = u.id LEFT JOIN
-            user_class c ON b.virtual_account = c.virtual_account LEFT JOIN
-            levels l ON l.id = c.level_id LEFT JOIN
-            grades g ON g.id = c.grade_id LEFT JOIN
-            sections s ON s.id = c.section_id
-        WHERE
-            TRUE $paramQuery";
+            spp_tagihan_detail d JOIN
+            spp_tagihan b ON d.tagihan_id = b.id LEFT JOIN
+            siswa u ON b.siswa_id = u.id LEFT JOIN
+            jenjang j on u.jenjang_id = j.id LEFT JOIN
+            tingkat t on u.tingkat_id = t.id LEFT JOIN
+            kelas k on u.kelas_id = k.id
+        WHERE " . implode(" AND ", $q);
 
-        $result = $this->db->fetchAssoc($this->db->query($query));
+        $result = $this->db->fetchAssoc($this->db->query($query, $p));
 
         return $result;
     }
 
     protected function getLateFee($params = [])
     {
-        $status = $this->status;
+        $q = ["u.deleted_at IS NULL"];
+        $p = [];
 
-        $paramQuery = NULL_VALUE;
-
-        if ($params['search'] != NULL_VALUE) {
-            $paramQuery .= " AND (u.name LIKE '%$params[search]%' OR c.virtual_account LIKE '%$params[search]%')";
+        if (!empty($params['siswa'])) {
+            $q[] = "u.id = ?";
+            $p[] = $params['siswa'];
+        }
+        if (!empty($params['level'])) {
+            $q[] = "j.id = ?";
+            $p[] = $params['level'];
+        }
+        if (!empty($params['grade'])) {
+            $q[] = "t.id = ?";
+            $p[] = $params['grade'];
+        }
+        if (!empty($params['section'])) {
+            $q[] = "k.id = ?";
+            $p[] = $params['section'];
         }
 
-        if ($params['level'] != NULL_VALUE) {
-            $paramQuery .= " AND l.id = $params[level]";
-        }
-        if ($params['grade'] != NULL_VALUE) {
-            $paramQuery .= " AND g.id = $params[grade]";
-        }
-        if ($params['section'] != NULL_VALUE) {
-            $paramQuery .= " AND s.id = $params[section]";
-        }
+        if (!empty($params['start']) && !empty($params['end'])) {
+            $startDateStr = $params['start'];
+            $startDate = new DateTime($startDateStr);
+            $start_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end'];
+            $endDate = new DateTime($endDateStr);
+            $end_plus_one_month = $endDate->format('Y-m-d');
 
-        if (($params['start_date'] != NULL_VALUE) & ($params['end_date'] != NULL_VALUE)) {
-            $start_date = $params['start_date'];
-            $end_date = $params['end_date'];
-
-            $paramQuery .= " AND b.payment_due >= '$start_date' AND b.payment_due <= '$end_date'";
+            $q[] = "b.jatuh_tempo >= ?";
+            $p[] = $start_plus_one_month;
+            $q[] = "b.jatuh_tempo <= ?";
+            $p[] = $end_plus_one_month;
         }
 
         $query = "SELECT
             SUM(CASE
-                WHEN b.trx_status IN ('$status[unpaid]') THEN b.late_fee
+                WHEN d.jenis = 'late' AND d.lunas = false
+                THEN d.nominal
                 ELSE 0
-            END) AS late_fee
+            END) AS result
         FROM
-            bills b JOIN
-            users u ON b.user_id = u.id LEFT JOIN
-            user_class c ON b.virtual_account = c.virtual_account LEFT JOIN
-            levels l ON l.id = c.level_id LEFT JOIN
-            grades g ON g.id = c.grade_id LEFT JOIN
-            sections s ON s.id = c.section_id
-        WHERE
-            TRUE $paramQuery";
+            spp_tagihan_detail d JOIN
+            spp_tagihan b ON d.tagihan_id = b.id LEFT JOIN
+            siswa u ON b.siswa_id = u.id LEFT JOIN
+            jenjang j on u.jenjang_id = j.id LEFT JOIN
+            tingkat t on u.tingkat_id = t.id LEFT JOIN
+            kelas k on u.kelas_id = k.id
+        WHERE " . implode(" AND ", $q);
 
-        $result = $this->db->fetchAssoc($this->db->query($query));
+        $result = $this->db->fetchAssoc($this->db->query($query, $p));
 
         return $result;
     }
     protected function getPaidLateFee($params = [])
     {
-        $status = $this->status;
         $paramQuery = NULL_VALUE;
 
-        if ($params['search'] != NULL_VALUE) {
-            $paramQuery .= " AND (u.name LIKE '%$params[search]%' OR c.virtual_account LIKE '%$params[search]%')";
+        $q = ["u.deleted_at IS NULL"];
+        $p = [];
+
+        if (!empty($params['siswa'])) {
+            $q[] = "u.id = ?";
+            $p[] = $params['siswa'];
+        }
+        if (!empty($params['level'])) {
+            $q[] = "j.id = ?";
+            $p[] = $params['level'];
+        }
+        if (!empty($params['grade'])) {
+            $q[] = "t.id = ?";
+            $p[] = $params['grade'];
+        }
+        if (!empty($params['section'])) {
+            $q[] = "k.id = ?";
+            $p[] = $params['section'];
         }
 
-        if ($params['level'] != NULL_VALUE) {
-            $paramQuery .= " AND l.id = $params[level]";
-        }
-        if ($params['grade'] != NULL_VALUE) {
-            $paramQuery .= " AND g.id = $params[grade]";
-        }
-        if ($params['section'] != NULL_VALUE) {
-            $paramQuery .= " AND s.id = $params[section]";
-        }
+        if (!empty($params['start']) && !empty($params['end'])) {
+            $startDateStr = $params['start'];
+            $startDate = new DateTime($startDateStr);
+            $start_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end'];
+            $endDate = new DateTime($endDateStr);
+            $end_plus_one_month = $endDate->format('Y-m-d');
 
-        if (($params['start_date'] != NULL_VALUE) & ($params['end_date'] != NULL_VALUE)) {
-            $start_date = $params['start_date'];
-            $end_date = $params['end_date'];
-
-            $paramQuery .= " AND b.payment_due >= '$start_date' AND b.payment_due <= '$end_date'";
+            $q[] = "b.jatuh_tempo >= ?";
+            $p[] = $start_plus_one_month;
+            $q[] = "b.jatuh_tempo <= ?";
+            $p[] = $end_plus_one_month;
         }
 
         $query = "SELECT
             SUM(CASE
-                WHEN b.trx_status IN ('$status[late]') THEN b.late_fee
+                WHEN d.jenis = 'late' AND d.lunas = true
+                THEN d.nominal
                 ELSE 0
-            END) AS late_fee
+            END) AS result
         FROM
-            bills b JOIN
-            users u ON b.user_id = u.id LEFT JOIN
-            user_class c ON b.virtual_account = c.virtual_account LEFT JOIN
-            levels l ON l.id = c.level_id LEFT JOIN
-            grades g ON g.id = c.grade_id LEFT JOIN
-            sections s ON s.id = c.section_id
-        WHERE
-            TRUE $paramQuery";
+            spp_tagihan_detail d JOIN
+            spp_tagihan b ON d.tagihan_id = b.id LEFT JOIN
+            siswa u ON b.siswa_id = u.id LEFT JOIN
+            jenjang j on u.jenjang_id = j.id LEFT JOIN
+            tingkat t on u.tingkat_id = t.id LEFT JOIN
+            kelas k on u.kelas_id = k.id
+        WHERE " . implode(" AND ", $q);
 
-        $result = $this->db->fetchAssoc($this->db->query($query));
+        $result = $this->db->fetchAssoc($this->db->query($query, $p));
 
         return $result;
     }
 
-    public function getJournals($level = null, $for_akt = false, $for_export = false)
+    public function getJournals($level = NULL_VALUE, $for_akt = false, $for_export = false)
     {
-        $journalDate = $this->getDate();
-        $monthInt = $journalDate['month'];
+        $journalDate = Call::splitDate(); 
 
-        if($monthInt === 0){
-            $journal_details =  [
-                                    'per_first_day' => 0,
-                                    'per_tenth_day' => 0,
-                                    'late_fee_amount' => 0,
-                                    'paid_late_fee' => 0,
-                                ];
-            return $journal_details;
-        }
-
-
-        $listedDetails = $journalDate['details'];
-
-        $semester       = $listedDetails[1];
-        $year           = $listedDetails[2];
-        $month          = isset($listedDetails[3]) ? $listedDetails[3] : null;
-
-
-        $month = sprintf('%02d', $monthInt);
-
-        $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
-            'semester'  => $semester == 1 ? FIRST_SEMESTER : SECOND_SEMESTER,
-            'date'      => Call::splitDate("01-$month-$year")
-        ]);
-        $splitDate = Call::splitDate();
+        $year = $journalDate['year'];
 
         $params = [
-            'search' => $_GET['search'] ?? NULL_VALUE,
-            'academic_year' => $_GET['year-filter'] ?? $academicYear,
-            'semester' => $_GET['semester-filter'] ?? $semester,
-            'month' => $_GET['month-filter'] ?? $month,
-            'level' => $_GET['level-filter'] ?? $level,
-            'grade' => $_GET['grade-filter'] ?? NULL_VALUE,
-            'section' => $_GET['section-filter'] ?? NULL_VALUE,
+            'siswa' => $_GET['filter-siswa'] ?? NULL_VALUE,
+            'year' => $_GET['filter-tahun'] ?? $year,
+            'month' => $_GET['filter-bulan'] ?? NULL_VALUE,
+            'level' => $_GET['filter-jenjang'] ?? $level,
+            'grade' => $_GET['filter-tingkat'] ?? NULL_VALUE,
+            'section' => $_GET['filter-kelas'] ?? NULL_VALUE,
         ];
 
-        $semesterInt = $params['semester'] == FIRST_SEMESTER ? 1 : 2;
+        if (!empty($params['month'])) {
+            $start = new DateTime("$year-$params[month]-01");
+            $end = clone $start;
+            $end->modify('last day of this month');
 
-        $startSemester = Call::getFirstDay(
-            [
-                'year' => $params['academic_year'],
-                'semester' => $semesterInt,
-                'month' => $params['semester'] == FIRST_SEMESTER ? '07' : '01',
-            ],
-            FIRST_DAY_FROM_ACADEMIC_YEAR_DETAILS,
-        );
-
-        $years = explode("/", $params['academic_year']);
-        $yearInt = $years[intval($semesterInt) - 1];
-
-        $modifyDate = new DateTime("11-$params[month]-$yearInt");
-        if ((int) $splitDate['day'] <= 10 && $params['month'] != $month) {
-            $modifyDate->modify('last day of this month');
+            $dateFilter = [
+                'start' => $start->format('Y-m-d'),
+                'end' => $end->format('Y-m-d'),
+            ];
+        } else if($for_akt) {
+            $max = $this->db->fetchAssoc(
+                $this->db->query("SELECT MAX(bulan) AS bulan, MAX(tahun) AS tahun FROM spp_tagihan WHERE is_active = 1")
+            );
+            $start = new DateTime("$year-$max[bulan]-01");
+            $end = clone $start;
+            $end->modify('last day of this month');
+            $dateFilter = [
+                'start' => $start->format('Y-m-d'),
+                'end' => $end->format('Y-m-d'),
+            ];
+        } else {
+            $dateFilter = [
+                'start' => "$year-01-01",
+                'end' => "$year-12-31",
+            ];
         }
-        $endRange = $modifyDate->format(DATE_FORMAT);
-        $modifyDate->modify('last day of this month');
-        $dueDateParamMonth = $modifyDate->format(DATE_FORMAT);
-        $firstDayMonth = $modifyDate->modify('first day of this month');
-        $firstDayOfTheMonth = $firstDayMonth->format(DATE_FORMAT);
 
-        if(isset($_GET['month-filter'])){
-            $startSemester = "$yearInt-$params[month]-01";
-        }
+        // get journals
+        $params = array_merge($params, $dateFilter);
+        $journal_details = [
+            'piutang' => $this->schoolFeesIssuance($params)['result'],
+            'pelunasan' => $this->schoolFeeSettlement($for_akt, $params)['result'],
+            'hutang' => $this->getLateFee($params)['result'],
+            'hutang_terbayar' => $this->getPaidLateFee($params)['result'],
+        ];
 
-        $startDateParams = array_merge($params, ['start_date' => $for_akt ? $firstDayOfTheMonth : $startSemester, 'end_date' => $endRange]);
-        $dueDateParams = array_merge($params, ['start_date' => $for_akt ? $firstDayOfTheMonth : $startSemester, 'end_date' => $dueDateParamMonth]);
-        $startDateResult = $this->getUnpaidTransaction($startDateParams);
-        $dueDateResult = $this->getTransaction($for_akt, $dueDateParams);
-        $lateFeeResult = $this->getLateFee($startDateParams);
-        $paidLateResult = $this->getPaidLateFee($startDateParams);
-
-        $journal_details =  [
-                                'per_first_day' => $startDateResult['bank'],
-                                'per_tenth_day' => $dueDateResult['amount'],
-                                'late_fee_amount' => $lateFeeResult['late_fee'],
-                                'paid_late_fee' => $paidLateResult['late_fee'],
-                            ];
-        if ($for_export){
+        if ($for_export) {
             $this->exportJournals($journal_details, $params);
         }
         return $journal_details;
     }
 
-    protected function getDate() : array
+    public function exportJournals($dataJurnal, $filter)
     {
-        $checkLatestStatus = "SELECT log_name 
-                              FROM logs 
-                              WHERE log_name LIKE 'BCHECK-%' OR log_name LIKE 'BCREATE-%'
-                              ORDER BY created_at DESC 
-                              LIMIT 1;";
-        
-        $checkLatestLog = $this->db->fetchAssoc($this->db->query($checkLatestStatus));
-        if(isset($checkLatestLog)){
-            $checkLog       = explode('-', $checkLatestLog['log_name']);
-        } else {
-            return ['month' => 0];
-        }
-
-        if($checkLog[0] === LOG_CREATE_BILLS){
-            $log = "SELECT log_name, created_at FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-            $logDetail = $this->db->fetchAssoc($this->db->query($log));
-        } else if($checkLog[0] == LOG_CHECK_BILLS) {
-            $log = "SELECT log_name, created_at FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-            $logDetail = $this->db->fetchAssoc($this->db->query($log));
-        } else {
-            return ['month' => 0];
-        }
-
-        $logName = $logDetail['log_name'];
-        $logTime = $logDetail['created_at'];
-
-        $listedDetails  = explode('-', $logName);
-        $semester       = $listedDetails[1];
-        $year           = $listedDetails[2];
-        $actMonth       = isset($listedDetails[3]) ? $listedDetails[3] : null;
-
-        $logTime = new DateTime($logTime);
-        
-        $logMonth = (int)$logTime->format('m');
-
-        if(!isset($actMonth)){
-            $monthInt = $semester === FIRST_SEMESTER ? 7 : 1;
-            return ['month' => $monthInt, 'details' => $listedDetails, 'type' => 'create'];
-        }
-
-        $actTime = new DateTime("10-$actMonth-$year 23:59:59");
-        $diff = $logTime->diff($actTime);
-
-        if($diff->m === 0) { // in range of current bills
-            if($logMonth === $actMonth) { // on the same month
-                return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
-            }
-            if($diff->invert === 1){ // before the month
-                return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
-            }
-            return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
-        }
-
-        return ['month' => $actMonth+1, 'details' => $listedDetails, 'type' => 'check'];
-    }
-
-    public function exportJournals($data, $filter)
-    {        
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
-        $sheet->getPageSetup()
-            ->setOrientation(PageSetup::ORIENTATION_PORTRAIT)
-            ->setPaperSize(PageSetup::PAPERSIZE_A4);
+        $sheet->getPageSetup()->setOrientation(PageSetup::ORIENTATION_PORTRAIT)->setPaperSize(PageSetup::PAPERSIZE_A4);
 
-        $margin = 0.50;
+        $margin = 0.5;
         $sheet->getPageMargins()->setTop($margin);
         $sheet->getPageMargins()->setRight($margin);
         $sheet->getPageMargins()->setLeft($margin);
@@ -393,9 +334,9 @@ class JournalBE
             return FormatHelper::formatRupiah($amount);
         };
 
-        $sheet->getColumnDimension('A')->setWidth(30); 
-        $sheet->getColumnDimension('B')->setWidth(25); 
-        $sheet->getColumnDimension('C')->setWidth(2); 
+        $sheet->getColumnDimension('A')->setWidth(30);
+        $sheet->getColumnDimension('B')->setWidth(25);
+        $sheet->getColumnDimension('C')->setWidth(2);
 
         $sheet->getColumnDimension('D')->setWidth(30);
         $sheet->getColumnDimension('E')->setWidth(25);
@@ -424,7 +365,7 @@ class JournalBE
             'font' => ['bold' => true, 'size' => 10],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
             'borders' => [
-                'allBorders' => [ 
+                'allBorders' => [
                     'borderStyle' => Border::BORDER_THIN,
                     'color' => ['rgb' => '000000'],
                 ],
@@ -442,28 +383,36 @@ class JournalBE
         ];
         $rowHeightHeaderTables = 18;
 
-        $sheet->mergeCells('A'.$currentRow.':A'.$currentRow)->setCellValue('A'.$currentRow, 'Semester');
-        $sheet->mergeCells('B'.$currentRow.':C'.$currentRow)->setCellValue('B'.$currentRow, 'Tahun Ajaran');
-        $sheet->mergeCells('D'.$currentRow.':E'.$currentRow)->setCellValue('D'.$currentRow, 'Kelas');
-        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($headerStyleArray);
+        $sheet->mergeCells('A' . $currentRow . ':A' . $currentRow)->setCellValue('A' . $currentRow, 'Semester');
+        $sheet->mergeCells('B' . $currentRow . ':C' . $currentRow)->setCellValue('B' . $currentRow, 'Tahun Ajaran');
+        $sheet->mergeCells('D' . $currentRow . ':E' . $currentRow)->setCellValue('D' . $currentRow, 'Kelas');
+        $sheet->getStyle('A' . $currentRow . ':E' . $currentRow)->applyFromArray($headerStyleArray);
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
 
         $semesterText = '';
-        if (($filter['semester'] ?? null) == FIRST_SEMESTER) $semesterText = 'Ganjil';
-        elseif (($filter['semester'] ?? null) == SECOND_SEMESTER) $semesterText = 'Genap';
-        else $semesterText = (string)($filter['semester'] ?? '-');
-        $tahunAjaranText = $filter['academic_year'] ?? '-';
+        if (($filter['semester'] ?? null) == FIRST_SEMESTER) {
+            $semesterText = 'Ganjil';
+        } elseif (($filter['semester'] ?? null) == SECOND_SEMESTER) {
+            $semesterText = 'Genap';
+        } else {
+            $semesterText = (string) ($filter['semester'] ?? '-');
+        }
+        $tahun = $filter['year'] ?? '-';
         $class_list = [];
 
         $query = "SELECT
-                    l.id AS level_id, l.name AS level_name, l.va_code AS va_prefix,
-                    g.id AS grade_id, g.level_id AS grade_level_id, g.name AS grade_name, g.base_monthly_fee AS grade_monthly, g.base_late_fee AS grade_late,
-                    s.id AS section_id, s.grade_id AS section_level_id, s.name AS section_name, s.base_monthly_fee AS section_monthly, s.base_late_fee AS section_late
+                    tf.jenjang_id AS level_id, tf.tingkat_id AS grade_id, tf.kelas_id AS section_id,
+                    j.nama AS level_name, j.va_code AS va_prefix, t.nama AS grade_name, k.nama AS section_name,
+                    tf.nominal AS monthly
                   FROM
-                    levels l LEFT JOIN
-                    grades g ON l.id = g.level_id LEFT JOIN
-                    sections s ON g.id = s.grade_id";
+                    spp_tarif tf INNER JOIN
+                    jenjang j ON j.id = tf.jenjang_id LEFT JOIN
+                    tingkat t ON t.id = tf.tingkat_id LEFT JOIN
+                    kelas k ON k.id = tf.kelas_id
+                  WHERE
+                    tahun = $tahun
+                    ";
         $classResult = $this->db->fetchAll($this->db->query($query));
 
         foreach ($classResult as $data) {
@@ -472,45 +421,37 @@ class JournalBE
                 'level_name' => $data['level_name'],
                 'grade_name' => $data['grade_name'],
                 'section_name' => $data['section_name'],
-                'monthly_fee' => $data['grade_monthly'] != 0 ? $data['grade_monthly'] : $data['section_monthly'],
-                'late_fee' => $data['grade_late'] != 0 ? $data['grade_late'] : $data['section_monthly'],
+                'monthly_fee' => $data['monthly'],
+                'late_fee' => Call::denda(),
             ];
-        }  
+        }
 
         $class = $class_list[$filter['level']][$filter['grade']][$filter['section']];
-        $kelasText = $class['level_name']." ". ($class['grade_name'] ?? null)." ". ($class['section_name'] ?? null);
+        $kelasText = $class['level_name'] . ' ' . ($class['grade_name'] ?? null) . ' ' . ($class['section_name'] ?? null);
 
-        $sheet->mergeCells('A'.$currentRow.':A'.$currentRow)->setCellValue('A'.$currentRow, $semesterText);
-        $sheet->mergeCells('B'.$currentRow.':C'.$currentRow)->setCellValue('B'.$currentRow, $tahunAjaranText);
-        $sheet->mergeCells('D'.$currentRow.':E'.$currentRow)->setCellValue('D'.$currentRow, $kelasText);
-        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($cellStyleArray);
+        $sheet->mergeCells('A' . $currentRow . ':A' . $currentRow)->setCellValue('A' . $currentRow, $semesterText);
+        $sheet->mergeCells('B' . $currentRow . ':C' . $currentRow)->setCellValue('B' . $currentRow, $tahun);
+        $sheet->mergeCells('D' . $currentRow . ':E' . $currentRow)->setCellValue('D' . $currentRow, $kelasText);
+        $sheet->getStyle('A' . $currentRow . ':E' . $currentRow)->applyFromArray($cellStyleArray);
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
         $currentRow++;
 
-        $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, 'Nama');
-        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($headerStyleArray); 
+        $sheet->mergeCells('A' . $currentRow . ':E' . $currentRow)->setCellValue('A' . $currentRow, 'Nama');
+        $sheet->getStyle('A' . $currentRow . ':E' . $currentRow)->applyFromArray($headerStyleArray);
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
 
-        $sheet->mergeCells('A'.$currentRow.':E'.$currentRow)->setCellValue('A'.$currentRow, $filter['search'] ?? '-');
-        $sheet->getStyle('A'.$currentRow.':E'.$currentRow)->applyFromArray($cellStyleArray); 
+        $sheet->mergeCells('A' . $currentRow . ':E' . $currentRow)->setCellValue('A' . $currentRow, $filter['search'] ?? '-');
+        $sheet->getStyle('A' . $currentRow . ':E' . $currentRow)->applyFromArray($cellStyleArray);
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
         $currentRow++;
 
-        $drawJournalSubTable = function (
-            $sheet,
-            $labelCol, $valueCol, $startRow,
-            $title,
-            $label1, $value1, $isLabel1Bold, $label1Align,
-            $label2, $value2, $isLabel2Bold, $label2Align,
-            $formatCurrencyFunc
-        ) use ($rowHeightHeaderTables) {
-
-            $titleCellsRange = $labelCol.$startRow.':'.$valueCol.$startRow;
+        $drawJournalSubTable = function ($sheet, $labelCol, $valueCol, $startRow, $title, $label1, $value1, $isLabel1Bold, $label1Align, $label2, $value2, $isLabel2Bold, $label2Align, $formatCurrencyFunc) use ($rowHeightHeaderTables) {
+            $titleCellsRange = $labelCol . $startRow . ':' . $valueCol . $startRow;
             $sheet->mergeCells($titleCellsRange);
-            $sheet->setCellValue($labelCol.$startRow, $title);
+            $sheet->setCellValue($labelCol . $startRow, $title);
             $styleTitle = $sheet->getStyle($titleCellsRange);
             $styleTitle->getFont()->setBold(true)->setSize(9);
             $styleTitle->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
@@ -522,38 +463,35 @@ class JournalBE
             $row = $startRow + 1;
 
             // Row 1
-            $sheet->setCellValue($labelCol.$row, $label1);
-            $styleL1 = $sheet->getStyle($labelCol.$row);
+            $sheet->setCellValue($labelCol . $row, $label1);
+            $styleL1 = $sheet->getStyle($labelCol . $row);
             $styleL1->getFont()->setBold($isLabel1Bold)->setSize(9);
             $styleL1->getAlignment()->setHorizontal($label1Align)->setVertical(Alignment::VERTICAL_CENTER);
             $styleL1->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
             $styleL1->getBorders()->getTop()->setBorderStyle(Border::BORDER_HAIR);
             $styleL1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
-
-            $sheet->setCellValue($valueCol.$row, $formatCurrencyFunc($value1));
-            $styleV1 = $sheet->getStyle($valueCol.$row);
+            $sheet->setCellValue($valueCol . $row, $formatCurrencyFunc($value1));
+            $styleV1 = $sheet->getStyle($valueCol . $row);
             $styleV1->getFont()->setBold(false)->setSize(9);
             $styleV1->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT)->setVertical(Alignment::VERTICAL_CENTER);
             $styleV1->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
             $styleV1->getBorders()->getTop()->setBorderStyle(Border::BORDER_HAIR);
             $styleV1->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
-
             $sheet->getRowDimension($row)->setRowHeight($rowHeightHeaderTables - 2);
             $row++;
 
             // Row 2
-            $sheet->setCellValue($labelCol.$row, $label2);
-            $styleL2 = $sheet->getStyle($labelCol.$row);
+            $sheet->setCellValue($labelCol . $row, $label2);
+            $styleL2 = $sheet->getStyle($labelCol . $row);
             $styleL2->getFont()->setBold($isLabel2Bold)->setSize(9);
             $styleL2->getAlignment()->setHorizontal($label2Align)->setVertical(Alignment::VERTICAL_CENTER);
             $styleL2->getBorders()->getLeft()->setBorderStyle(Border::BORDER_THIN);
             $styleL2->getBorders()->getBottom()->setBorderStyle(Border::BORDER_THIN);
 
-
-            $sheet->setCellValue($valueCol.$row, $formatCurrencyFunc($value2));
-            $styleV2 = $sheet->getStyle($valueCol.$row);
+            $sheet->setCellValue($valueCol . $row, $formatCurrencyFunc($value2));
+            $styleV2 = $sheet->getStyle($valueCol . $row);
             $styleV2->getFont()->setBold(false)->setSize(9);
             $styleV2->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT)->setVertical(Alignment::VERTICAL_CENTER);
             $styleV2->getBorders()->getRight()->setBorderStyle(Border::BORDER_THIN);
@@ -566,52 +504,27 @@ class JournalBE
 
         $dataStartRow = $currentRow;
 
-        $nextRowLeft = $drawJournalSubTable(
-            $sheet, 'A', 'B', $dataStartRow,
-            'PENERBITAN UANG SEKOLAH',
-            'PIUT UANG SEKOLAH', $data['per_first_day'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
-            'PENERIMAAN - UANG SEKOLAH', $data['per_first_day'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
-            $formatCurrency
-        );
+        $nextRowLeft = $drawJournalSubTable($sheet, 'A', 'B', $dataStartRow, 'PENERBITAN UANG SEKOLAH', 'PIUT UANG SEKOLAH', $dataJurnal['piutang'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PENERIMAAN - UANG SEKOLAH', $dataJurnal['piutang'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
 
-        $nextRowRight = $drawJournalSubTable(
-            $sheet, 'D', 'E', $dataStartRow,
-            'PELUNASAN UANG SEKOLAH',
-            'BANK BNI', $data['per_tenth_day'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
-            'PIUT. UANG SEKOLAH', $data['per_tenth_day'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
-            $formatCurrency
-        );
+        $nextRowRight = $drawJournalSubTable($sheet, 'D', 'E', $dataStartRow, 'PELUNASAN UANG SEKOLAH', 'BANK BNI', $dataJurnal['pelunasan'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PIUT. UANG SEKOLAH', $dataJurnal['pelunasan'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
 
         $currentRow = max($nextRowLeft, $nextRowRight);
         $currentRow++;
 
-        $nextRowLeft = $drawJournalSubTable(
-            $sheet, 'A', 'B', $currentRow,
-            'PENERBITAN DENDA',
-            'PIUT. DENDA', $data['late_fee_amount'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
-            'PENERIMAAN - UANG DENDA', $data['late_fee_amount'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
-            $formatCurrency
-        );
+        $nextRowLeft = $drawJournalSubTable($sheet, 'A', 'B', $currentRow, 'PENERBITAN DENDA', 'PIUT. DENDA', $dataJurnal['hutang'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PENERIMAAN - UANG DENDA', $dataJurnal['hutang'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
 
-        $nextRowRight = $drawJournalSubTable(
-            $sheet, 'D', 'E', $currentRow,
-            'PEMBAYARAN DENDA LUNAS',
-            'BANK BNI', $data['paid_late_fee'] ?? 0, true, Alignment::HORIZONTAL_LEFT,
-            'PIUT. DENDA', $data['paid_late_fee'] ?? 0, false, Alignment::HORIZONTAL_RIGHT,
-            $formatCurrency
-        );
-
+        $nextRowRight = $drawJournalSubTable($sheet, 'D', 'E', $currentRow, 'PEMBAYARAN DENDA LUNAS', 'BANK BNI', $dataJurnal['hutang_terbayar'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PIUT. DENDA', $dataJurnal['hutang_terbayar'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
 
         \PhpOffice\PhpSpreadsheet\IOFactory::registerWriter('Pdf', Mpdf::class);
         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Pdf');
 
-        $pdfFilename = 'Data_Penjurnalan_Lengkap_' . str_replace('/', '-', $tahunAjaranText) . '_' . $semesterText . '.pdf';
+        $pdfFilename = 'Data_Penjurnalan_Lengkap_' . $tahun . '_' . $semesterText . '.pdf';
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment;filename="' . $pdfFilename . '"');
         header('Cache-Control: max-age=0');
 
         $writer->save('php://output');
-        exit;
+        exit();
     }
 }

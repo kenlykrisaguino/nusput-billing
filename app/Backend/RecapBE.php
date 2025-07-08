@@ -2,6 +2,8 @@
 
 namespace app\Backend;
 
+use App\Helpers\Call;
+
 require_once dirname(dirname(__DIR__)) . '/config/constants.php';
 
 class RecapBE
@@ -15,119 +17,72 @@ class RecapBE
 
     public function getRecaps()
     {        
-        $status = [
-            'paid' => BILL_STATUS_PAID,
-            'unpaid' => BILL_STATUS_UNPAID,
-            'late' => BILL_STATUS_LATE,
-            'inactive' => BILL_STATUS_INACTIVE,
-            'active' => BILL_STATUS_ACTIVE,
-            'disabled' => BILL_STATUS_DISABLED
-        ];
-
         $params = [
-            'search' => $_GET['search'] ??  NULL_VALUE,
-            'academic_year' => $_GET['year-filter'] ??  NULL_VALUE,
-            'semester' => $_GET['semester-filter'] ??  NULL_VALUE,
-            'month' => $_GET['month-filter'] ??  NULL_VALUE,
-            'level' => $_GET['level-filter'] ??  NULL_VALUE,
-            'grade' => $_GET['grade-filter'] ??  NULL_VALUE,
-            'section' => $_GET['section-filter'] ??  NULL_VALUE,
+            'siswa' => $_GET['filter-siswa'] ??  NULL_VALUE,
+            'year' => $_GET['filter-tahun'] ?? Call::year(),
+            'month' => $_GET['filter-bulan'] ??  NULL_VALUE,
+            'level' => $_GET['filter-jenjang'] ??  NULL_VALUE,
+            'grade' => $_GET['filter-tingkat'] ??  NULL_VALUE,
+            'section' => $_GET['filter-kelas'] ??  NULL_VALUE,
         ];
 
-        $paramQuery = NULL_VALUE;
+        $p = ["s.deleted_at IS NULL"];
+        $q = [];
 
-        if($params['search'] != NULL_VALUE){
-            $paramQuery .= " AND u.name LIKE '%$params[search]%'";
+        if(!empty($params['siswa'])){
+            $p[] = "s.id = ?";
+            $q[] = $params['siswa'];
+        }
+        if(!empty($params['year'])){
+            $p[] = "d.tahun = ?";
+            $q[] = $params['year'];
+        }
+        if(!empty($params['month'])){
+            $p[] = "d.bulan = ?";
+            $q[] = $params['month'];
+        }
+        if(!empty($params['level'])){
+            $p[] = "l.id = ?";
+            $q[] = $params['level'];
+        }
+        if(!empty($params['grade'])){
+            $p[] = "g.id = ?";
+            $q[] = $params['grade'];
+        }
+        if(!empty($params['section'])){
+            $p[] = "s.id = ?";
+            $q[] = $params['section'];
         }
 
-        if($params['academic_year'] != NULL_VALUE){
-            $academicYear = explode('/', $params['academic_year'], 2);
-            $years = [
-                'min' => "$academicYear[0]-07-01",
-                'max' => "$academicYear[1]-06-30"
-            ];
-
-            $paramQuery .= " AND b.payment_due BETWEEN '$years[min]' AND '$years[max]' ";
-        }
-
-        if($params['semester'] != NULL_VALUE){
-            $year = explode('/', $params['academic_year'], 2);
-
-            if ($params['semester'] == 2) {
-                $paramQuery .= " AND YEAR(b.payment_due) = $year[1]";
-            } else {
-                $paramQuery .= " AND YEAR(b.payment_due) = $year[0]";
-            }
-        }
-
-        if($params['month'] != NULL_VALUE){
-            $paramQuery .= " AND MONTH(b.payment_due) = $params[month]";
-        }
-
-        if($params['level'] != NULL_VALUE){
-            $paramQuery .= " AND l.id = $params[level]";
-        }
-        if($params['grade'] != NULL_VALUE){
-            $paramQuery .= " AND g.id = $params[grade]";
-        }
-        if($params['section'] != NULL_VALUE){
-            $paramQuery .= " AND s.id = $params[section]";
-        }
-
-        $query = "SELECT
-                  c.virtual_account, u.name, u.parent_phone,
-                  CONCAT(
-                    COALESCE(l.name, ''),
-                    ' ', 
-                    COALESCE(g.name, ''), 
-                    ' ', 
-                    COALESCE(s.name, '')
-                  ) AS class_name,
-                  COALESCE(SUM(CASE 
-                    WHEN b.trx_status = '{$status['paid']}' 
-                    OR b.trx_status = '{$status['late']}' 
-                    THEN b.trx_amount ELSE 0 END), 0) 
-                    +
-                    COALESCE(SUM(CASE 
-                        WHEN b.trx_status = '{$status['late']}' 
-                        THEN b.late_fee ELSE 0 END), 0) 
-                    AS penerimaan,
-                    COALESCE(SUM(CASE 
-                        WHEN b.trx_status = '{$status['unpaid']}' 
-                        THEN b.late_fee ELSE 0 END), 0) 
-                    AS tunggakan
-                  FROM bills b
-                  LEFT JOIN users u ON b.user_id = u.id
-                  LEFT JOIN (
-                        SELECT uc1.*
-                        FROM user_class uc1
-                        LEFT JOIN user_class uc2
-                            ON uc1.user_id = uc2.user_id
-                            AND (
-                                (uc2.date_left IS NULL AND uc1.date_left IS NOT NULL)
-                            OR
-                                (uc2.date_left > uc1.date_left AND uc2.date_left IS NOT NULL)
-                            OR
-                                (uc1.date_left <=> uc2.date_left AND uc2.id > uc1.id)
-                            )
-                        WHERE uc2.user_id IS NULL
-                    ) c ON u.id = c.user_id
-                  LEFT JOIN levels l ON c.level_id = l.id
-                  LEFT JOIN grades g ON c.grade_id = g.id
-                  LEFT JOIN sections s ON c.section_id = s.id
-                  WHERE 
-                    TRUE 
-                    $paramQuery
-                  GROUP BY c.virtual_account, u.name, u.parent_phone,
-                  CONCAT(
-                    COALESCE(l.name, ''),
-                    ' ', 
-                    COALESCE(g.name, ''), 
-                    ' ', 
-                    COALESCE(s.name, '')
-                  )";
+        $query = "SELECT 
+                    s.nama, CONCAT(
+                        COALESCE(j.nama, ''),
+                        ' ', 
+                        COALESCE(t.nama, ''), 
+                        ' ', 
+                        COALESCE(k.nama, '')
+                    ) AS kelas,
+                    SUM(CASE
+                        WHEN d.lunas = true THEN d.nominal
+                        ELSE 0
+                    END) AS penerimaan,
+                    SUM(CASE
+                        WHEN d.jenis = 'late' AND d.lunas = false THEN d.nominal
+                        ELSE 0
+                    END) AS denda
+                  FROM
+                    spp_tagihan_detail d JOIN
+                    spp_tagihan ON d.tagihan_id = spp_tagihan.id LEFT JOIN
+                    siswa s ON spp_tagihan.siswa_id = s.id LEFT JOIN
+                    jenjang j ON s.jenjang_id = j.id LEFT JOIN
+                    tingkat t ON s.tingkat_id = t.id LEFT JOIN
+                    kelas k   ON s.kelas_id   = k.id
+                  WHERE " . implode(" AND ", $p) . "
+                  GROUP BY 
+                    s.nama, j.nama, t.nama, k.nama
+                  ";
         
-        $result = $this->db->query($query);
+        $result = $this->db->query($query, $q);
         return $this->db->fetchAll($result);
     }
 }

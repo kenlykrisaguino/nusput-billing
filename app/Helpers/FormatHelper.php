@@ -85,4 +85,14 @@ class FormatHelper
     
         return null;
     }
+
+    public static function hashPassword($rawPassword)
+    {
+        return password_hash($rawPassword, PASSWORD_DEFAULT); 
+    }
+
+    public static function verifyPassword($rawPassword, $hashedPassword)
+    {
+        return password_verify($rawPassword, $hashedPassword);
+    }
 }

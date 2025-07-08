@@ -1,314 +1,235 @@
-<?php
-if (isset($_SESSION['msg'])) :?>
-<script>
-    alert("<?= $_SESSION['msg'] ?>")
-</script>
-<?php 
-unset($_SESSION['msg']);
-endif;?>
+<script src="/js/components/editFeeModal.js"></script>
 
-<div class="w-full">
-    <div class="flex justify-between w-full mb-2">
-        <h1 class="text-lg font-semibold text-slate-800">Tagihan</h1>
-        <form action="" method="get" class="flex gap-2">
-            <a href="/exports/bills"
-                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">Export</a>
-            <div>
-                <label for="search" class="mb-2 text-xs font-medium text-blue-900 sr-only">Search</label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                        <svg class="w-2 h-2 text-blue-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"
-                            fill="none" viewBox="0 0 20 20">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z" />
-                        </svg>
-                    </div>
-                    <input type="search" id="search" name="search" value="<?= $_GET['search'] ?? '' ?>"
-                        class="block w-full px-2 py-1 ps-7 text-xs rounded-md text-blue-900 border border-blue-700 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Search Bills" />
-                    <button type="submit"
-                        class="text-white absolute end-0.5 bottom-0.5 bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-md text-xs px-2 py-1">Search</button>
-                </div>
-            </div>
-            <div onclick="document.getElementById('filter-bill').classList.remove('hidden')"
-                class="px-2 py-1 text-xs rounded-md border border-blue-700 text-blue-500 hover:text-blue-800 cursor-pointer font-semibold">
-                Filter</div>
-            <div id="filter-bill" class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-                <div class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
-                    <h3 class="text-sm font-bold mb-2 text-slate-700">Filter Tagihan</h3>
+<main x-data="{
+    isMobile: window.innerWidth < 768,
+    sidebarOpen: true,
+    init() {
+        this.sidebarOpen = !this.isMobile;
+        window.addEventListener('resize', () => {
+            const stillMobile = window.innerWidth < 768;
+            if (this.isMobile && !stillMobile) {
+                this.sidebarOpen = true;
+            } else if (!this.isMobile && stillMobile && this.sidebarOpen) {
+                this.sidebarOpen = false;
+            }
+            this.isMobile = stillMobile;
+        });
+    }
+}"
+    @toggle-sidebar.window="if(isMobile) sidebarOpen = !sidebarOpen; else sidebarOpen = !sidebarOpen"
+    class="flex flex-grow overflow-hidden h-full">
 
-                    <div class="mb-2">
-                        <label for="year-filter" class="text-xs font-semibold uppercase">tahun ajaran</label>
-                        <select name="year-filter" id="year-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Tahun Ajaran</option>
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <label for="semester-filter" class="text-xs font-semibold uppercase">semester</label>
-                        <select name="semester-filter" id="semester-filter"
-                            class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                            <option value="" selected disabled>Pilih Semester</option>
-                        </select>
-                    </div>
-
-                    <button type="submit"
-                        class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                        Filter
-                    </button>
-
-                    <button onclick="closeModal('filter-bill')" type="button"
-                        class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                        Batal
-                    </button>
-                </div>
-            </div>
-        </form>
+    <div x-show="sidebarOpen && isMobile" @click="sidebarOpen = false" class="fixed inset-0 bg-black/50 z-30 md:hidden"
+        x-transition:enter="transition-opacity ease-linear duration-300" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100" x-transition:leave="transition-opacity ease-linear duration-300"
+        x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
     </div>
 
-    <hr class="mb-2">
+    <div x-show="sidebarOpen || !isMobile"
+        :class="{
+            '-translate-x-full': !sidebarOpen && isMobile,
+            'translate-x-0 h-full': sidebarOpen && isMobile,
+            'lg:w-1/6 md:w-2/6 sm:w-1/2': sidebarOpen && !isMobile,
+            'md:w-20': !sidebarOpen && !isMobile,
+            'w-3/4 sm:w-2/3': isMobile && sidebarOpen,
+            'w-0 p-0': !sidebarOpen && isMobile
+        }"
+        class="bg-sky-600 z-40 transition-all duration-300 ease-in-out flex flex-col
+               fixed md:relative top-0 left-0
+               md:flex-shrink-0"
+        :style="(!sidebarOpen && isMobile) ? 'padding: 0;' : 'padding: 1rem;'">
 
-    <?php
-    
-    use App\Helpers\FormatHelper;
-    use App\Helpers\Call;
-    
-    $data = $this->billBE->getBills();
-    $bills = $data['data'];
-    $months = Call::monthNameSemester($data['semester']);
-    
-    $status = [
-        BILL_STATUS_PAID => [
-            'display' => 'Paid',
-            'class' => 'text-green-700 font-semibold',
-        ],
-        BILL_STATUS_LATE => [
-            'display' => 'Late',
-            'class' => 'text-amber-700',
-        ],
-        BILL_STATUS_ACTIVE => [
-            'display' => 'Active',
-            'class' => 'text-blue-700',
-        ],
-        BILL_STATUS_UNPAID => [
-            'display' => 'Unpaid',
-            'class' => 'text-red-700 font-semibold',
-        ],
-        BILL_STATUS_INACTIVE => [
-            'display' => 'Inavtive',
-            'class' => 'text-slate-400',
-        ],
-        BILL_STATUS_DISABLED => [
-            'display' => 'Disabled',
-            'class' => 'text-slate-200',
-        ],
-    ];
-    ?>
+        <button x-show="sidebarOpen || !isMobile" @click="sidebarOpen = !sidebarOpen"
+            :class="{
+                'absolute top-3 right-3': sidebarOpen,
+                'self-center mb-3': !sidebarOpen && !isMobile,
+                'hidden': !sidebarOpen && isMobile
+            }"
+            class="bg-sky-700 hover:bg-sky-800 text-white rounded-full w-8 h-8 flex items-center justify-center focus:outline-none shadow-md cursor-pointer">
+            <i x-show="sidebarOpen" class="ti ti-chevron-left text-base"></i>
+            <i x-show="!sidebarOpen && !isMobile" class="ti ti-chevron-right text-base"></i>
+        </button>
 
-    <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
-        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                <tr>
-                    <th scope="col" class="px-6 py-3">
-                        Siswa
-                    </th>
-                    <th scope="col" class="px-6 py-3">
-                        Kelas
-                    </th>
-                    <th scope="col" class="px-6 py-3">
-                        <div class="flex flex-col">
-                            <div class="">
-                                Tagihan
-                            </div>
-                            <div class="text-[0.5rem] text-medium text-slate-400">SPP + Denda</div>
+        <div x-show="sidebarOpen || (!sidebarOpen && !isMobile)" class="overflow-y-auto flex-grow pt-10 md:pt-0">
+            <div x-show="sidebarOpen" class="flex items-center mb-6 mt-1"
+                :class="{ 'mr-6': sidebarOpen && !isMobile, 'mr-10': sidebarOpen && isMobile }">
+                <h3 class="text-white font-semibold transition-opacity duration-200">Quick Access</h3>
+            </div>
+            <div :class="sidebarOpen ? '' : 'mt-2'" class="flex flex-col gap-2 text-slate-50">
+                <div x-show="sidebarOpen" class="flex gap-2 items-center mb-2">
+                    <h4 class="text-xs uppercase">bill actions</h4>
+                    <div class="flex-1">
+                        <hr class="text-white">
+                    </div>
+                </div>
+                <a href="/exports/bills" :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Export Tagihan'"><i
+                        class="ti ti-file-export text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Export Tagihan</span></a>
+                <div id="create-bill-btn" :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Buat Tagihan Bulanan'">
+                    <i class="ti ti-file-invoice text-lg"></i>
+                    <span x-show="sidebarOpen || isMobile" :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Buat Tagihan Tahunan</span>
+                </div>
+                <div id="check-bill-btn"
+                    @click="document.getElementById('import-bill-modal').classList.remove('hidden')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Cek Tagihan Bulan'"><i
+                        class="ti ti-report text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Cek Tagihan Bulan</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex-grow bg-slate-200 overflow-y-auto main-content-shifted"
+        :class="{
+            'md:pl-4': sidebarOpen && !isMobile,
+            'md:pl-8': !sidebarOpen && !isMobile,
+            'pl-0': isMobile
+        }">
+        <div class="px-6 md:px-10 py-6 flex-1">
+            <div class="w-full flex gap-4 flex-col">
+                <section id="bills">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-semibold text-xl text-slate-700">Bill Management</h3>
+                        <div class="flex items-center gap-2">
+                            <button @click="document.getElementById('filter-bill-modal').classList.remove('hidden')"
+                                title="Filter Tagihan"
+                                class="text-slate-500 hover:text-sky-600 transition-colors p-1.5 rounded-md hover:bg-sky-100">
+                                <i class="ti ti-filter text-xl"></i>
+                            </button>
                         </div>
-                    </th>
-                    <th scope="col" class="px-6 py-3 bg-emerald-50">
-                        <div class="flex flex-col">
-                            <div class="">Penerimaan</div>
-                            <div class="text-[0.5rem] text-medium text-slate-400">SPP</div>
-                        </div>
-                    </th>
-                    <th scope="col" class="px-6 py-3 bg-red-50">
-                        Tunggakan
-                    </th>
-                    <?php foreach($months as $num => $month) :?>
-                    <th scope="col" class="px-6 py-3">
-                        <?= $month ?>
-                    </th>
-                    <?php endforeach;?>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (count($bills) > 0) : ?>
-                <?php foreach($bills as $bill) :?>
-                <tr class="odd:bg-white even:bg-gray-50 border-b border-gray-200">
-                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
-                        <?= $bill['name'] ?>
-                        <div class="text-xs text-blue-500"><?= $bill['virtual_account'] ?></div>
-                    </th>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <?= $bill['class_name'] ?>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <?= FormatHelper::formatRupiah($bill['tagihan']) ?>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap bg-emerald-50 text-emerald-700">
-                        <?= FormatHelper::formatRupiah($bill['penerimaan']) ?>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap bg-red-50 text-red-700">
-                        <?= FormatHelper::formatRupiah($bill['tunggakan']) ?>
-                    </td>
-                    <?php foreach($months as $month) :
-                            $modalId = 'modal_' . $bill['virtual_account'] . '_' . $month;
-                            $detail = json_decode($bill["Detail$month"], true);
-
-                            $enableEdit = in_array($bill["Status$month"], [BILL_STATUS_ACTIVE, BILL_STATUS_INACTIVE, BILL_STATUS_UNPAID]);
-                        ?>
-                    <td class="px-6 py-4 whitespace-nowrap <?= Call::statusColor($bill["Status$month"]) ?>">
-                        <button type="button"
-                            onclick="document.getElementById('<?= $modalId ?>').classList.remove('hidden')"
-                            class="cursor-pointer">
-                            <?= FormatHelper::formatRupiah($bill[$month]) ?>
-                        </button>
-
-                        <div id="<?= $modalId ?>"
-                            class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-                            <div class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
-                                <h3 class="text-sm font-bold mb-2 text-slate-700">Detail Tagihan - <?= $month ?></h3>
-
-                                <?php if ($detail && is_array($detail)) : ?>
-                                <ul class="text-xs text-slate-700 space-y-1 max-h-64 overflow-y-auto mb-3">
-                                    <li class="flex justify-between border-b border-slate-600 pb-1">
-                                        <span class="font-semibold">Nama</span>
-                                        <span><?= htmlspecialchars($detail['name']) ?></span>
-                                    </li>
-                                    <li class="flex justify-between border-b border-slate-600 pb-1">
-                                        <span class="font-semibold">Kelas</span>
-                                        <span><?= htmlspecialchars($detail['class']) ?></span>
-                                    </li>
-                                    <li class="flex justify-between border-b border-slate-600 pb-1">
-                                        <span class="font-semibold">Virtual Account</span>
-                                        <span><?= htmlspecialchars($detail['virtual_account']) ?></span>
-                                    </li>
-                                    <li class="flex justify-between border-b pb-1 border-slate-600">
-                                        <span class="font-semibold">Tahun Ajaran</span>
-                                        <span><?= htmlspecialchars($detail['academic_year']) ?></span>
-                                    </li>
-                                    <li class="flex justify-between border-b pb-1 border-slate-600">
-                                        <span class="font-semibold">Periode</span>
-                                        <span><?= htmlspecialchars($detail['billing_month']) ?></span>
-                                    </li>
-                                    <li class="flex justify-between border-b pb-1 border-slate-600">
-                                        <span class="font-semibold">Jatuh Tempo</span>
-                                        <span><?= date('d M Y', strtotime($detail['due_date'])) ?></span>
-                                    </li>
-                                    <?php if (!empty($detail['payment_date'])) : ?>
-                                    <li class="flex justify-between border-b pb-1 border-slate-600">
-                                        <span class="font-semibold">Tanggal Bayar</span>
-                                        <span><?= date('d M Y', strtotime($detail['payment_date'])) ?></span>
-                                    </li>
-                                    <?php endif; ?>
-                                    <?php
-                                    $billStatus = trim($detail['status'], "\"\\");
-                                    ?>
-                                    <li class="flex justify-between border-b pb-1 border-slate-600">
-                                        <span class="font-semibold">Status</span>
-                                        <span
-                                            class="<?= $status[$billStatus]['class'] ?>"><?= $status[$billStatus]['display'] ?></span>
-                                    </li>
-
-                                    <li class="pt-2 text-slate-700 font-semibold">Rincian Tagihan:</li>
-                                    <?php foreach ($detail['items'] as $item) : ?>
-                                    <?php
-                                    $item_name = htmlspecialchars($item['item_name']);
-                                    
-                                    if ($item_name == 'monthly_fee') {
-                                        $item_name = 'Tagihan Bulanan';
-                                    } elseif ($item_name == 'late_fee') {
-                                        $item_name = 'Biaya Keterlambatan';
-                                    }
-                                    ?>
-                                    <li class="flex justify-between pb-1 ps-2">
-                                        <span><?= $item_name ?></span>
-                                        <span><?= FormatHelper::formatRupiah($item['amount']) ?></span>
-                                    </li>
-                                    <?php endforeach; ?>
-
-                                    <li class="flex justify-between font-bold pt-2 border-t mt-2">
-                                        <span>Total</span>
-                                        <span><?= FormatHelper::formatRupiah($detail['total']) ?></span>
-                                    </li>
-                                </ul>
-                                <?php else : ?>
-                                <div class="text-sm text-slate-500 italic">Detail tidak tersedia</div>
-                                <?php endif; ?>
-
-                                <button onclick="document.getElementById('<?= $modalId ?>').classList.add('hidden')"
-                                    class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                                    Tutup
-                                </button>
-                                <?php 
-                                        if($enableEdit):
-                                        $editId = 'modaledit_' . $bill['virtual_account'] . '_' . $month;            
-                                        
-                                        ?>
-                                <button onclick="changeModal('<?= $modalId ?>', '<?= $editId ?>')"
-                                    class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                                    Edit Biaya Keterlambatan
-                                </button>
-                                <?php 
-                                        endif;
-                                        ?>
-                            </div>
-                        </div>
-
-                        <?php 
-                                if($enableEdit):
-                                ?>
-                        <div id="<?= $editId ?>"
-                            class="fixed inset-0 z-50 hidden bg-slate-900/50 flex justify-center items-center">
-                            <form method="POST" action=""
-                                class="bg-white w-[90%] max-w-md p-4 rounded-lg shadow-lg relative">
-                                <h3 class="text-sm font-bold mb-2 text-slate-700">Edit Biaya Keterlambatan -
-                                    <?= $month ?></h3>
-                                <div class="col-span-2">
-                                    <label for="late_fee" class="text-xs font-semibold uppercase text-slate-800">Biaya
-                                        Keterlambatan <span class="text-red-600 font-bold">*</span></label>
-                                    <input type="text" name="late_fee" id="late_fee"
-                                        value="<?= (int) $bill["Late$month"] ?>"
-                                    class="block w-full px-3 py-2 text-sm text-slate-800 bg-slate-200 rounded-md border-0 shadow-sm focus:outline-none focus:ring-slate-500 focus:bg-slate-100">
-                                </div>
-                                <input type="hidden" name="bill_id" value="<?= $bill["BillId$month"] ?>">
-                                <button type="submit"
-                                    class="cursor-pointer mt-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-                                    Edit
-                                </button>
-                                <button onclick="changeModal('<?= $editId ?>', '<?= $modalId ?>')" type="button"
-                                    class="cursor-pointer mt-4 px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700">
-                                    Batal
-                                </button>
-                            </form>
-                        </div>
-
+                    </div>
+                    <div class="bg-white p-4 rounded-lg mt-4 relative overflow-x-auto shadow">
                         <?php
-                                endif;
-                                ?>
+                            use App\Helpers\Call;
+                            use App\Helpers\FormatHelper;
+                            $billRecaps = $app->BillBE()->getBills() ?? ['data' => [], 'months' => []];
+                        ?>
+                        <table id="bill-table" class="w-full text-sm text-left text-gray-700">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 sticky left-0 bg-gray-100 z-10">Nama Siswa</th>
+                                    <th class="px-4 py-3 sticky left-0 bg-gray-100 z-10">Midtrans VA</th>
+                                    <th class="px-4 py-3">Kelas</th>
+                                    <th class="px-4 py-3 text-green-700">Tagihan</th>
+                                    <th class="px-4 py-3 text-red-600">Denda</th>
+                                    <?php for ($month = 1; $month <= 12; $month++): ?>
+                                    <?php if (count($billRecaps) > 0) : ?>
+                                    <th
+                                        class="px-4 py-3 text-center  <?= $billRecaps[0]['bulan'] ?? false == $month ? 'bg-sky-100' : '' ?>">
+                                        <?= htmlspecialchars(sprintf('%02d', $month)) ?></th>
+                                    <?php else: ?>
+                                    <th class="px-4 py-3 text-center"><?= htmlspecialchars(sprintf('%02d', $month)) ?>
+                                    </th>
+                                    <?php endif; ?>
+                                    <?php endfor; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
 
-                    </td>
-                    <?php endforeach;?>
+                                <?php if (count($billRecaps['data']) > 0) : ?>
+                                    <?php foreach($billRecaps['data'] as $recap) :?>
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <th scope="row"
+                                            class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">
+                                            <?= htmlspecialchars($recap['nama'] ?? '') ?>
+                                            <div class="text-xs text-blue-500 font-normal">
+                                                <?= htmlspecialchars($recap['virtual_account'] ?? '') ?>
+                                            </div>
+                                        </th>
+                                        <td class="px-4 py-2 whitespace-nowrap">
+                                            <?= htmlspecialchars($recap['va_midtrans'] ?? '-') ?>
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap">
+                                            <?= htmlspecialchars($recap['jenjang'] ?? '') ?>
+                                            <?= htmlspecialchars($recap['tingkat'] ?? '') ?>
+                                            <?= htmlspecialchars($recap['kelas'] ?? '') ?>
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap font-medium text-green-700">
+                                            <?= FormatHelper::formatRupiah($recap['total_nominal'] + $recap['denda'] ?? 0) ?>
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap font-semibold text-red-600">
+                                            <?= FormatHelper::formatRupiah($recap['denda'] ?? 0) ?>
+                                        </td>
+                                        <!-- Kolom data bulan dinamis -->
+                                        <?php for ($month = 1; $month <= 12; $month++): ?>
+                                        <?php
+                                        $bill = $app->BillBE()->getMonthBill($month, $billRecaps['year'], $recap['id']);
+                                        $bgColor = '';
+                                        $textColor = '';
+                                        $isSameYear = Call::year() == $billRecaps['year'];
 
-                </tr>
-                <?php endforeach;?>
-                <?php else :?>
-                <tr>
-                    <td class="px-6 py-4 text-center" colspan="9">
-                        Data siswa kosong.
-                    </td>
-                </tr>
-                <?php endif;?>
-            </tbody>
-        </table>
+                                        if ($recap['bulan'] == $month && $isSameYear) {
+                                            $bgColor = 'bg-sky-100';
+                                            if ($recap['status'] === 'lunas') {
+                                                $textColor = 'text-green-600';
+                                                $bgColor = 'bg-green-100';
+                                            } else {
+                                                $textColor = 'text-blue-600';
+                                            }
+                                        } elseif ($recap['bulan'] > $month && $isSameYear) {
+                                            $colors = $app->BillBE()->checkSingularBillStatus($recap['id'], $month, $billRecaps['year']);
+                                            $bgColor = $colors['bg'];
+                                            $textColor = $colors['text'];
+                                        } else {
+                                            $textColor = 'text-slate-300';
+                                        }
+                                        ?>
+                                        <td
+                                        onclick="pages.tagihan.openBillDetails('<?= htmlspecialchars($recap['id']) ?>', '<?= htmlspecialchars($month) ?>', '<?= htmlspecialchars($recap['tahun']) ?>')"
+                                        class="px-4 py-2 text-center whitespace-nowrap <?= $bgColor ?> cursor-pointer hover:bg-blue-100 transition-colors">
+                                            <span class="whitespace-nowrap <?= $textColor ?>"> <?= FormatHelper::formatRupiah($bill['sum']) ?></span>
+                                        </td>
+                                        <?php endfor; ?>
+                                    </tr>
+                                    <?php endforeach;?>
+                                <?php else:?>
+                                <tr>
+                                    <td colspan="16" class="px-4 py-2 text-center text-gray-500">
+                                        Tidak ada data tagihan ditemukan.</td>
+                                </tr>
+                                <?php endif;?>
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
     </div>
-</div>
+</main>
+
+<?php include_once __DIR__ . '/modals/fee-edit.php'; ?>
+<?php include_once __DIR__ . '/modals/fee-filter.php'; ?>
+
+<script src="/js/flowbite.min.js"></script>
+<script src="/js/datatables.js"></script>
 <script src="/js/pages/tagihan.js"></script>
+
+<script type="module">
+    const DataTable = window.simpleDatatables.DataTable;
+    const billTableElement = document.getElementById("bill-table");
+    if (billTableElement) {
+        new DataTable(billTableElement, {
+            paging: true,
+            perPage: 10,
+            perPageSelect: [5, 10, 15, 20, 25, 50, 1000],
+            searchable: true,
+            sortable: true,
+            filter: true,
+            labels: {
+                placeholder: "Cari Tagihan...",
+                perPage: "pembayaran per halaman",
+                noRows: "Tidak ada data ditemukan",
+                info: "Menampilkan {start} sampai {end} dari {rows} pembayran"
+            }
+        });
+    }
+</script>

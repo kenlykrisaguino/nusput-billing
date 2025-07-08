@@ -9,6 +9,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
+use App\Midtrans\Midtrans;
 use DateTime;
 use Exception;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -18,144 +19,65 @@ class BillBE
 {
     private $db;
     private $journal;
-    private $status = [
-        'paid' => BILL_STATUS_PAID,
-        'unpaid' => BILL_STATUS_UNPAID,
-        'late' => BILL_STATUS_LATE,
-        'inactive' => BILL_STATUS_INACTIVE,
-        'active' => BILL_STATUS_ACTIVE,
-        'disabled' => BILL_STATUS_DISABLED,
-    ];
+    private Midtrans $midtrans;
 
-    public function __construct($database)
+    public function __construct($database, $midtrans)
     {
         $this->db = $database;
         $this->journal = new JournalBE($database);
+        $this->midtrans = new Midtrans($midtrans);
     }
 
     public function getBills()
     {
-        $status = $this->status;
-
-        $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-        $logName = $this->db->fetchAssoc($this->db->query($log));
-
-        if(!empty($logName)){
-            [$title, $semester, $year] = explode('-', $logName['log_name']);
-        } else {
-            $semester = Call::semester();
-            $year = Call::year();
+        $params = ['s.deleted_at IS NULL'];
+        $filterData = [];
+        if (!empty($_GET['filter-jenjang'])) {
+            $params[] = 'j.id = ?';
+            $filterData[] = $_GET['filter-jenjang'];
         }
-
-        if ($semester == SECOND_SEMESTER) {
-            $periodDate = "01-07-$year";
-        } else {
-            $periodDate = "01-01-$year";
+        if (!empty($_GET['filter-tingkat'])) {
+            $params[] = 't.id = ?';
+            $filterData[] = $_GET['filter-tingkat'];
         }
-
-        $date = Call::splitDate($periodDate);
-        $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
-            'semester' => $semester,
-            'date' => $date,
-        ]);
-
-        $params['semester'] = $_GET['semester-filter'] ?? $semester;
-        $params['academic_year'] = $_GET['year-filter'] ?? $academicYear;
-
-        $params['semester'] = $params['semester'] == 1 || $params['semester'] == FIRST_SEMESTER ? FIRST_SEMESTER : SECOND_SEMESTER;
-
-        $filterYear = $params['semester'] == SECOND_SEMESTER ? substr($params['academic_year'], -4) : substr($params['academic_year'], -4) - 1;
-        $finalMonth = $params['semester'] == SECOND_SEMESTER ? 6 : 12;
-
-        $query = "SELECT
-                    MAX(suc.virtual_account) AS virtual_account, u.nis, u.name,
-                    CONCAT(
-                    COALESCE(l.name, ''),
-                    ' ',
-                    COALESCE(g.name, ''),
-                    ' ',
-                    COALESCE(s.name, '')
-                    ) AS class_name,
-                    SUM(CASE WHEN b.trx_status = '{$status['late']}' THEN suc.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status = '{$status['paid']}' OR b.trx_status = '{$status['late']}' THEN b.trx_amount ELSE 0 END) AS penerimaan,
-                    SUM(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN b.late_fee ELSE 0 END) + SUM(CASE WHEN b.trx_status IN ('{$status['active']}', '{$status['unpaid']}') THEN b.trx_amount ELSE 0 END) AS tagihan,
-                    (SELECT SUM(nb.late_fee) FROM bills nb JOIN users nu ON nu.id = nb.user_id LEFT JOIN user_class nuc ON nu.id = nuc.user_id WHERE nuc.virtual_account = suc.virtual_account AND MONTH(nb.payment_due) <= {$finalMonth} AND YEAR(nb.payment_due)<={$filterYear} AND nb.trx_status = '{$status['unpaid']}') AS tunggakan";
-
-        $months = Call::monthNameSemester($params['semester']);
-
-        $monthQuery = [];
-
-        foreach ($months as $num => $month) {
-            $monthQuery[] = "
-                SUM(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_amount + b.late_fee ELSE 0 END) AS `$month`,
-                SUM(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.late_fee ELSE 0 END) AS `Late$month`,
-                MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_status ELSE '' END) AS `Status$month`,
-                MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.trx_detail ELSE '' END) AS `Detail$month`,
-                MAX(CASE WHEN MONTH(b.payment_due) = $num AND YEAR(b.payment_due) = $filterYear THEN b.id ELSE 0 END) AS `BillId$month`
-            ";
+        if (!empty($_GET['filter-kelas'])) {
+            $params[] = 'k.id = ?';
+            $filterData[] = $_GET['filter-kelas'];
         }
-
-        $filterQuery = '';
-
-        if (!empty($params['search'])) {
-            $search = $params['search'];
-            $filterQuery .= " AND (
-                        u.nis LIKE '%$search%' OR
-                        u.name LIKE '%$search%' OR
-                        suc.virtual_account LIKE '%$search%'
-                    )";
-        }
-
-        if ($params['semester'] == SECOND_SEMESTER) {
-            $min = "$filterYear-01-01";
-            $max = "$filterYear-06-30";
-        } else {
-            $min = "$filterYear-07-01";
-            $max = "$filterYear-12-31";
-        }
-
-        if (!empty($monthQuery)) {
-            $query .= ", " . implode(', ', $monthQuery);
-        }
-
-        $query .= "FROM
-                    bills b
-                    INNER JOIN users u ON b.user_id = u.id
-                    LEFT JOIN (
-                        SELECT uc1.*
-                        FROM user_class uc1
-                        LEFT JOIN user_class uc2
-                            ON uc1.user_id = uc2.user_id
-                            AND (
-                                (uc2.date_left IS NULL AND uc1.date_left IS NOT NULL)
-                            OR
-                                (uc2.date_left > uc1.date_left AND uc2.date_left IS NOT NULL)
-                            OR
-                                (uc1.date_left <=> uc2.date_left AND uc2.id > uc1.id)
-                            )
-                        WHERE uc2.user_id IS NULL
-                    ) AS suc ON u.id = suc.user_id
-                    LEFT JOIN levels l ON suc.level_id = l.id
-                    LEFT JOIN grades g ON suc.grade_id = g.id
-                    LEFT JOIN sections s ON suc.section_id = s.id
-                WHERE
-                    TRUE $filterQuery";
-
-        $query .= " GROUP BY
-                  suc.virtual_account, u.nis, u.name,
-                  CONCAT(
-                    COALESCE(l.name, ''),
-                    ' ',
-                    COALESCE(g.name, ''),
-                    ' ',
-                    COALESCE(s.name, '')
-                  )";
-
-        $result = $this->db->query($query);
-        $data = $this->db->fetchAll($result);
+        $stmt =
+            "SELECT
+                    s.nama, j.nama AS jenjang, t.nama AS tingkat,
+                    k.nama AS kelas, tg.*, s.spp, s.va as virtual_account, s.va_midtrans
+                 FROM
+                    siswa s LEFT JOIN
+                    jenjang j on s.jenjang_id = j.id LEFT JOIN
+                    tingkat t on s.tingkat_id = t.id LEFT JOIN
+                    kelas k ON s.kelas_id = k.id LEFT JOIN
+                    spp_tagihan tg ON s.id = tg.siswa_id
+                 WHERE " . implode(' AND ', $params);
 
         return [
-            'data' => $data,
-            'semester' => $params['semester'],
+            'data' => $this->db->fetchAll($this->db->query($stmt, $filterData)),
+            'year' => $_GET['filter-tahun'] ?? Call::year(),
+        ];
+    }
+
+    public function getMonthBill($month, $year, $id)
+    {
+        $bill = $this->db->find('spp_tagihan', ['id' => $id]);
+        if (!isset($bill)) {
+            return ['sum' => 0, 'detail' => []];
+        }
+
+        $stmt = 'SELECT SUM(nominal) as sum FROM spp_tagihan_detail WHERE tagihan_id = ? AND bulan = ? AND tahun = ?';
+        $sum = $this->db->fetchAssoc($this->db->query($stmt, [$bill['id'], $month, $year]))['sum'];
+
+        $stmt = 'SELECT * FROM spp_tagihan_detail WHERE tagihan_id = ? AND bulan = ? AND tahun = ?';
+        $detail = $this->db->fetchAssoc($this->db->query($stmt, [$bill['id'], $month, $year]));
+
+        return [
+            'sum' => $sum,
+            'detail' => $detail,
         ];
     }
 
@@ -164,93 +86,132 @@ class BillBE
         try {
             $this->db->beginTransaction();
 
-            $logs = FormatHelper::formatSystemLog(LOG_CREATE_BILLS);
+            // 1. Tahun dibuat tagihannya (Kalau belum ada tagihan sebelumnya, pakai tahun sekarang)
+            $stmt = 'SELECT MAX(tahun) AS tahun FROM spp_tagihan';
+            $query = $this->db->query($stmt);
+            $year = $this->db->fetchAssoc($query)['tahun'] ?? Call::year();
 
-            $log_check = 'SELECT * FROM logs WHERE `log_name`= ?';
-            $log_check_result = $this->db->query($log_check, [$logs['log_name']]);
+            // 2. Check kalau sudah di bulan 12
+            $stmt = 'SELECT MAX(bulan) AS bulan FROM spp_tagihan WHERE tahun=?';
+            $query = $this->db->query($stmt, [$year]);
+            $bulanResult = $this->db->fetchAssoc($query);
 
-            if ($log_check_result && $this->db->fetchAssoc($log_check_result)) {
-                $this->db->rollback();
-                return Response::error('Bills have been created before', 404);
-            }
-
-            $months = Call::monthSemester();
-            $date = Call::splitDate();
-            $role = USER_ROLE_STUDENT;
-
-            $students_query = "
-                SELECT
-                    u.id, u.name, c.monthly_fee,
-                    c.late_fee, c.virtual_account, c.date_joined,
-                    c.date_left, l.name AS level_name,
-                    CONCAT(
-                        COALESCE(l.name, ''),
-                        ' ',
-                        COALESCE(g.name, ''),
-                        ' ',
-                        COALESCE(s.name, '')
-                    ) AS class_name
-                FROM
-                    users u
-                    LEFT JOIN user_class c ON u.id = c.user_id
-                    LEFT JOIN levels l ON c.level_id = l.id
-                    LEFT JOIN grades g ON c.grade_id = g.id
-                    LEFT JOIN sections s ON c.section_id = s.id
-                WHERE u.role = ? AND c.date_left IS NULL
-            ";
-            $student_result = $this->db->query($students_query, [$role]);
-            $students = $this->db->fetchAll($student_result);
-
-            $bills = [];
-            $academicYear = Call::academicYear();
-
-            foreach ($students as $student) {
-                foreach ($months as $month) {
-                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/{$date['year']} 23:59:59"));
-
-                    $details = [
-                        'name' => $student['name'],
-                        'class' => $student['class_name'],
-                        'virtual_account' => $student['virtual_account'],
-                        'academic_year' => $academicYear,
-                        'billing_month' => "$month/{$date['year']}",
-                        'due_date' => $due_date,
-                        'payment_date' => null,
-                        'status' => $months[0] == $month ? $this->status['active'] : $this->status['inactive'],
-                        'items' => [
-                            [
-                                'item_name' => MONTHLY_FEE,
-                                'amount' => (int) $student['monthly_fee'],
-                            ],
-                            [
-                                'item_name' => LATE_FEE,
-                                'amount' => 0,
-                            ],
-                        ],
-                        'notes' => '',
-                        'total' => (int) $student['monthly_fee'],
-                    ];
-
-                    $bills[] = [
-                        'user_id' => $student['id'],
-                        'virtual_account' => $student['virtual_account'],
-                        'trx_id' => FormatHelper::FormatTransactionCode($student['level_name'], $student['virtual_account'], $month),
-                        'trx_amount' => (int) $student['monthly_fee'],
-                        'trx_detail' => $details,
-                        'trx_status' => $months[0] == $month ? $this->status['active'] : $this->status['inactive'],
-                        'late_fee' => 0,
-                        'payment_due' => $due_date,
-                    ];
+            if (isset($bulanResult['bulan'])) {
+                if ($bulanResult['bulan'] != 13) {
+                    return Response::error('Harap selesaikan cek tagihan sampai bulan desember untuk membuat tagihan tahunan');
                 }
             }
 
-            $bill_result = $this->db->insert('bills', $bills);
+            $bulan = $bulanResult['bulan'];
 
-            $this->db->insert('logs', $logs);
+            // 3. Dapatkan seluruh data siswa aktif
+            $stmt = 'SELECT id, spp FROM siswa WHERE deleted_at IS NULL';
+            $students = $this->db->fetchAll($this->db->query($stmt));
+
+            // TODO: Get Student yang sudah ada
+            $stmt = 'SELECT id, siswa_id FROM spp_tagihan';
+            $avlbBills = $this->db->fetchAll($this->db->query($stmt));
+            $ids = array_combine(array_column($avlbBills, 'id'), array_column($avlbBills, 'siswa_id'));
+
+            foreach ($students as $student) {
+                $trx_id = Call::uuidv4();
+
+                $count = 0;
+
+                if (in_array($student['id'], $ids)) {
+                    // TODO: Update yang ada
+                    $billId = array_search($student['id'], $ids);
+                    $bill = $this->db->find('spp_tagihan', ['id' => $billId]);
+
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $billId,
+                        'jenis' => 'spp',
+                        'nominal' => $student['spp'],
+                        'bulan' => 1,
+                        'tahun' => $bill['tahun'] + 1,
+                    ]);
+
+                    $count = $this->countSPPRenewal($billId, $bill['bulan'], $bill['tahun']);
+                    $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
+
+                    $this->db->update(
+                        'spp_tagihan',
+                        [
+                            'tahun' => $bill['tahun'] + 1,
+                            'bulan' => 1,
+                            'jatuh_tempo' => $bill['tahun'] + 1 . '-01-10',
+                            'total_nominal' => $count,
+                            'count_denda' => $bill['count_denda'] + 1,
+                            'status' => 'belum_lunas',
+                            'midtrans_trx_id' => $trx_id,
+                        ],
+                        ['id' => $billId],
+                    );
+                } else {
+                    // TODO: Masuk ke create
+                    $billId = $this->db->insert('spp_tagihan', [
+                        'siswa_id' => $student['id'],
+                        'bulan' => 1,
+                        'tahun' => $year,
+                        'jatuh_tempo' => "$year-01-10",
+                        'total_nominal' => $student['spp'],
+                        'count_denda' => 0,
+                        'denda' => 0,
+                        'status' => 'belum_lunas',
+                        'midtrans_trx_id' => $trx_id,
+                    ]);
+
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $billId,
+                        'jenis' => 'spp',
+                        'nominal' => $student['spp'],
+                        'bulan' => 1,
+                        'tahun' => $year,
+                    ]);
+
+                    $count = $student['spp'];
+                }
+
+                $st = $this->db->find('siswa', ['id' => $student['id']]);
+                $bd = $this->db->findAll('spp_tagihan_detail', ['id' => $student['id'], 'lunas' => 0]);
+
+                $items = [];
+
+                foreach ($bd as $d) {
+                    $items[] = [
+                        'id' => $d['id'],
+                        'price' => $d['nominal'],
+                        'quantity' => 1,
+                        'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                    ];
+                }
+
+                $mdResult = $this->midtrans->charge([
+                    'payment_type' => 'bank_transfer',
+                    'transaction_details' => [
+                        'gross_amount' => $count,
+                        'order_id' => $trx_id,
+                    ],
+                    'customer_details' => [
+                        'email' => '',
+                        'first_name' => $st['nama'],
+                        'last_name' => '',
+                        'phone' => $st['no_hp_ortu'],
+                    ],
+                    'item_details' => $items,
+                    'bank_transfer' => [
+                        'bank' => 'bni',
+                        'va_number' => $st['va'],
+                    ],
+                ]);
+
+                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $student['id']]);
+            }
+            $this->sendToAKTSystem(1, $year);
 
             $this->db->commit();
-            $this->sendToAKTSystem($months[0], $date['year']);
-            return Response::success($bill_result, 'Bills created successfully');
+
+            return Response::success(null, "Berhasil membuat tagihan tahun $year");
         } catch (\Exception $e) {
             $this->db->rollback();
             return Response::error('Failed to create bills: ' . $e->getMessage(), 500);
@@ -259,163 +220,330 @@ class BillBE
 
     public function checkBills()
     {
+        // 1. Get data bulan dan tahun terbaru
+        $stmt = "SELECT tahun, MAX(bulan) AS bulan
+                    FROM spp_tagihan
+                    WHERE is_active = 1
+                    GROUP BY tahun
+                    ORDER BY tahun DESC
+                    LIMIT 1";
+        $latest = $this->db->fetchAssoc($this->db->query($stmt));
+
+        if ($latest['bulan'] > 12) {
+            return ApiResponse::error('Sudah melakukan cek tagihan sampai bulan desember, harap lakukan buat tagihan untuk melanjutkan');
+        }
+
+        // 2. Get tagihan yang pakai bulan dan tahun ini
+        $bills = $this->db->findAll('spp_tagihan', ['tahun' => $latest['tahun'], 'bulan' => $latest['bulan'], 'is_active' => 1]);
+
+        // 3. Logika penambahan SPP
         try {
             $this->db->beginTransaction();
 
-            $status = $this->status;
+            foreach ($bills as $bill) {
+                // TODO: Get Data Siswa
+                $student = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
 
-            // ! INISIASI KALAU ENGGA ADA BILLS SAMA SEKALI SEBELUMNYA
-            $check_bills = ["SELECT MAX(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[paid]') AND payment_due <= NOW()", "SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[active]') AND payment_due <= NOW()"];
-            $log_attr = '';
+                // TODO: Cek Status
+                $status = $bill['status'];
 
-            foreach ($check_bills as $check) {
-                $result = $this->db->query($check);
-                $data = $this->db->fetchAssoc($result);
+                $trx_id = Call::uuidv4();
+                $countTotal = 0;
 
-                if ($data && $data['payment_due']) {
-                    $log_attr = $data['payment_due'];
-                    continue;
+                if ($status == 'lunas') {
+                    $this->db->update(
+                        'spp_tagihan',
+                        [
+                            'siswa_id' => $student['id'],
+                            'bulan' => $latest['bulan'] + 1,
+                            'tahun' => $bill['tahun'],
+                            'jatuh_tempo' => $bill['tahun'] . '-01-10',
+                            'total_nominal' => $student['spp'],
+                            'count_denda' => 0,
+                            'denda' => 0,
+                            'status' => 'belum_lunas',
+                            'midtrans_trx_id' => $trx_id,
+                        ],
+                        ['id' => $bill['id']],
+                    );
+
+                    $countTotal = $student['spp'];
+
+                    if ($latest['bulan'] < 12) {
+                        $this->db->insert('spp_tagihan_detail', [
+                            'tagihan_id' => $bill['id'],
+                            'jenis' => 'spp',
+                            'nominal' => $student['spp'],
+                            'bulan' => $latest['bulan'] + 1,
+                            'tahun' => $latest['tahun'],
+                        ]);
+                    }
+                } else {
+                    $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
+                    if ($latest['bulan'] < 12) {
+                        $this->db->insert('spp_tagihan_detail', [
+                            'tagihan_id' => $bill['id'],
+                            'jenis' => 'spp',
+                            'nominal' => $student['spp'],
+                            'bulan' => $latest['bulan'] + 1,
+                            'tahun' => $latest['tahun'],
+                        ]);
+                    }
+
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $bill['id'],
+                        'jenis' => 'late',
+                        'nominal' => Call::denda(),
+                        'bulan' => $latest['bulan'],
+                        'tahun' => $latest['tahun'],
+                    ]);
+
+                    $count = $this->countSPPRenewal($bill['id'], (int) $bill['bulan'] + 1, $bill['tahun']);
+
+                    $this->db->update(
+                        'spp_tagihan',
+                        [
+                            'siswa_id' => $student['id'],
+                            'bulan' => $latest['bulan'] + 1,
+                            'tahun' => $bill['tahun'],
+                            'jatuh_tempo' => $bill['tahun'] . '-01-10',
+                            'total_nominal' => $count,
+                            'count_denda' => $bill['count_denda'] + 1,
+                            'denda' => Call::denda() * ($bill['count_denda'] + 1) + $bill['denda'],
+                            'status' => 'belum_lunas',
+                            'midtrans_trx_id' => $trx_id,
+                        ],
+                        ['id' => $bill['id']],
+                    );
+
+                    $countTotal += $count;
+                    $countTotal += Call::denda() * ($bill['count_denda'] + 1) + $bill['denda'];
+
+                    // TODO: Update late bills yang terlalui
+                    for ($i = $bill['count_denda']; $i > 0; $i--) {
+                        $d = $this->db->find('spp_tagihan_detail', [
+                            'tagihan_id' => $bill['id'],
+                            'bulan' => $latest['bulan'] - $i,
+                            'tahun' => $latest['tahun'],
+                            'jenis' => 'late',
+                        ]);
+                        // ! LOGIC FAILED
+                        $data = [
+                            'tagihan_id' => $d['tagihan_id'],
+                            'jenis' => $d['jenis'],
+                            'nominal' => $d['nominal'] + Call::denda(),
+                            'keterangan' => $d['keterangan'],
+                            'bulan' => $d['bulan'],
+                            'tahun' => $d['tahun'],
+                        ];
+
+                        $this->db->update('spp_tagihan_detail', $data, [
+                            'tagihan_id' => $bill['id'],
+                            'bulan' => $latest['bulan'] - $i,
+                            'tahun' => $latest['tahun'],
+                            'jenis' => 'late',
+                        ]);
+
+                        $countTotal += $d['nominal'] + Call::denda();
+                    }
                 }
+
+                $stmt = "SELECT
+                            bd.id, bd.tagihan_id, b.siswa_id,
+                            bd.jenis, bd.nominal, bd.bulan, bd.tahun
+                         FROM
+                            spp_tagihan b JOIN
+                            spp_tagihan_detail bd ON b.id = bd.tagihan_id
+                         WHERE
+                            b.siswa_id = $student[id] AND bd.lunas = 0";
+
+                $bd = $this->db->fetchAll($this->db->query($stmt));
+
+                $items = [];
+                $countBelumLunas = 0;
+
+                foreach ($bd as $d) {
+                    $items[] = [
+                        'id' => $d['id'],
+                        'price' => $d['nominal'],
+                        'quantity' => 1,
+                        'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                    ];
+                    if ($status != 'lunas') {
+                        $countBelumLunas += $d['nominal'];
+                    }
+                }
+                if ($status != 'lunas') {
+                    $countTotal = $countBelumLunas;
+                }
+
+                $mdPayload = [
+                    'payment_type' => 'bank_transfer',
+                    'transaction_details' => [
+                        'gross_amount' => $countTotal,
+                        'order_id' => $trx_id,
+                    ],
+                    'customer_details' => [
+                        'email' => '',
+                        'first_name' => $student['nama'],
+                        'last_name' => '',
+                        'phone' => $student['no_hp_ortu'],
+                    ],
+                    'item_details' => $items,
+                    'bank_transfer' => [
+                        'bank' => 'bni',
+                        'va_number' => $student['va'],
+                    ],
+                ];
+
+                $mdResult = $this->midtrans->charge($mdPayload);
+                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $student['id']]);
             }
-
-            if ($log_attr == '') {
-                $this->db->rollback();
-                return Response::error('No bills to check', 404);
-            }
-
-            $semester = Call::semester($log_attr);
-            $date = Call::splitDate($log_attr);
-            $logs = FormatHelper::formatSystemLog(LOG_CHECK_BILLS, [
-                'semester' => $semester,
-                'year' => $date['year'],
-                'month' => $date['month'],
-            ]);
-
-            $log_check = 'SELECT * FROM logs WHERE `log_name`= ?';
-            $log_check_result = $this->db->query($log_check, [$logs['log_name']]);
-
-            if ($log_check_result && $this->db->fetchAssoc($log_check_result)) {
-                $this->db->rollback();
-                return Response::error('Bills have been checked before', 404);
-            }
-
-            $temp_check_table = "CREATE TEMPORARY TABLE temp_bills AS
-                SELECT b.id, next_b.id AS next_b_id, b.payment_due, b.virtual_account
-                FROM bills b
-                LEFT JOIN bills next_b ON next_b.virtual_account = b.virtual_account
-                AND next_b.payment_due = (
-                    SELECT MIN(nb.payment_due)
-                    FROM bills nb
-                    WHERE nb.virtual_account = b.virtual_account
-                    AND nb.payment_due > b.payment_due
-                    AND nb.trx_status != '$status[active]'
-                )
-                WHERE b.trx_status IN ('$status[active]', '$status[paid]', '$status[unpaid]')
-                AND b.payment_due < DATE_SUB(NOW(), INTERVAL 24 HOUR)
-            ";
-
-            $this->db->query($temp_check_table);
-
-            $updateBills = "UPDATE bills b
-                LEFT JOIN temp_bills t ON b.id = t.id
-                LEFT JOIN bills next_b ON next_b.id = t.next_b_id
-                LEFT JOIN user_class c ON c.virtual_account = b.virtual_account AND c.date_left IS NULL
-                SET
-                    b.trx_status = CASE
-                        WHEN b.trx_status = '$status[active]' THEN '$status[unpaid]'
-                        WHEN b.trx_status = '$status[disabled]' THEN '$status[disabled]'
-                        ELSE b.trx_status
-                    END,
-                    b.late_fee = CASE
-                        WHEN b.trx_status = '$status[active]' THEN COALESCE(c.late_fee, 0)
-                        WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee + COALESCE(c.late_fee, 0)
-                        WHEN b.trx_status = '$status[disabled]' THEN 0
-                        ELSE b.late_fee
-                    END,
-                    next_b.trx_status = CASE
-                        WHEN b.trx_status IN ('$status[late]', '$status[unpaid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                            AND next_b.payment_due <= DATE_ADD(NOW(), INTERVAL 1 MONTH)
-                        THEN '$status[active]'
-                        WHEN b.trx_status IN ('$status[active]', '$status[paid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                            AND next_b.payment_due <= DATE_ADD(NOW(), INTERVAL 1 MONTH)
-                        THEN '$status[active]'
-                        ELSE next_b.trx_status
-                    END,
-                    b.trx_detail = CASE
-                        WHEN b.trx_status IN ('$status[active]', '$status[unpaid]') THEN
-                            JSON_SET(
-                                b.trx_detail,
-                                '$.status',
-                                    CASE
-                                        WHEN b.trx_status = '$status[active]' THEN '$status[unpaid]'
-                                        ELSE JSON_EXTRACT(b.trx_detail, '$.status')
-                                    END,
-                                '$.total',
-                                    CAST(JSON_EXTRACT(b.trx_detail, '$.total') AS DECIMAL(14,2)) + COALESCE(c.late_fee, 0),
-                                '$.items[1].amount',
-                                    CASE
-                                        WHEN b.trx_status = '$status[active]' THEN COALESCE(c.late_fee, 0)
-                                        WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee + COALESCE(c.late_fee, 0)
-                                        ELSE JSON_EXTRACT(b.trx_detail, '$.items[1].amount')
-                                    END
-                            )
-                        ELSE
-                            b.trx_detail
-                    END,
-                    next_b.trx_detail = CASE
-                        WHEN b.trx_status IN ('$status[active]', '$status[unpaid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                            AND next_b.payment_due <= DATE_ADD(NOW(), INTERVAL 1 MONTH)
-                        THEN JSON_SET(next_b.trx_detail, '$.status', '$status[active]')
-
-                        WHEN b.trx_status IN ('$status[active]', '$status[paid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                            AND next_b.payment_due <= DATE_ADD(NOW(), INTERVAL 1 MONTH)
-                        THEN JSON_SET(next_b.trx_detail, '$.status', '$status[active]')
-                        ELSE next_b.trx_detail
-                    END
-                WHERE b.trx_status IN ('$status[active]', '$status[paid]', '$status[unpaid]')
-                AND b.payment_due < DATE_SUB(NOW(), INTERVAL 24 HOUR);";
-
-            $this->db->query($updateBills);
-            $this->db->query('DROP TEMPORARY TABLE IF EXISTS temp_bills');
-
-            $this->db->insert('logs', $logs);
+            $this->sendToAKTSystem((int) $latest['bulan'] + 1, $latest['tahun']);
 
             $this->db->commit();
+            return ApiResponse::success(null, 'Berhasil mengupdate Tagihan');
+        } catch (\Exception $e) {
+            return ApiResponse::error('Failed: ' . $e);
+        }
+    }
 
-            $this->sendToAKTSystem($date['month'] + 1, $date['year']);
+    public function createSingularBill($studentId, $status = "CREATE")
+    {
+        try {
+            $this->db->beginTransaction();
 
-            return Response::success(true, 'Bills checked successfully');
+            // 1. Tahun dibuat tagihan
+            $stmt = 'SELECT MAX(tahun) AS tahun FROM spp_tagihan';
+            $query = $this->db->query($stmt);
+            $year = $this->db->fetchAssoc($query)['tahun'];
+
+            if (!isset($year)) {
+                return null;
+            }
+
+            // 2. Check bulan
+            $stmt = 'SELECT MAX(bulan) AS bulan FROM spp_tagihan WHERE tahun=?';
+            $query = $this->db->query($stmt, [$year]);
+            $bulanResult = $this->db->fetchAssoc($query);
+
+            $st = $this->db->find('siswa', ['id' => $studentId]);
+
+            $bulan = $bulanResult['bulan'];
+
+            $trx_id = Call::uuidv4();
+
+            $count = 0;
+
+            if($status == 'CREATE'){
+                $billId = $this->db->insert('spp_tagihan', [
+                    'siswa_id' => $studentId,
+                    'bulan' => $bulan,
+                    'tahun' => $year,
+                    'jatuh_tempo' => "$year-$bulan-10",
+                    'total_nominal' => $st['spp'],
+                    'count_denda' => 0,
+                    'denda' => 0,
+                    'status' => 'belum_lunas',
+                    'midtrans_trx_id' => $trx_id,
+                ]);
+    
+                $this->db->insert('spp_tagihan_detail', [
+                    'tagihan_id' => $billId,
+                    'jenis' => 'spp',
+                    'nominal' => $st['spp'],
+                    'bulan' => $bulan,
+                    'tahun' => $year,
+                ]);
+            } else {
+                $currBill = $this->db->find('spp_tagihan', ['siswa_id' => $st['id']]);
+                $monthDetail = $this->db->find('spp_tagihan_detail', [
+                    'tagihan_id' => $currBill['id'],
+                    'bulan'      => $bulan,
+                    'tahun'      => $year,
+                    'jenis'      => 'spp'
+                ]);
+
+                $tagihan = $currBill['total_nominal'] - $monthDetail['nominal'] + $st['spp'];
+
+                $bill = $this->db->update('spp_tagihan', [
+                    'total_nominal' => $tagihan,
+                    'midtrans_trx_id' => $trx_id,
+                ], ['id' => $currBill['id']]);
+
+                $detail = $this->db->update('spp_tagihan_detail', [
+                    'nominal' => $st['spp']
+                ], ['tagihan_id' => $currBill['id']]);
+
+            }
+
+            $bd = $this->db->findAll('spp_tagihan_detail', ['id' => $st['id'], 'lunas' => 0]);
+
+            $items = [];
+
+            foreach ($bd as $d) {
+                $items[] = [
+                    'id' => $d['id'],
+                    'price' => $st['spp'],
+                    'quantity' => 1,
+                    'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                ];
+            }
+
+            $mdPayload = [
+                'payment_type' => 'bank_transfer',
+                'transaction_details' => [
+                    'gross_amount' => $st['spp'],
+                    'order_id' => $trx_id,
+                ],
+                'customer_details' => [
+                    'email' => '',
+                    'first_name' => $st['nama'],
+                    'last_name' => '',
+                    'phone' => $st['no_hp_ortu'],
+                ],
+                'item_details' => $items,
+                'bank_transfer' => [
+                    'bank' => 'bni',
+                    'va_number' => $st['va'],
+                ],
+            ];
+
+            $mdResult = $this->midtrans->charge($mdPayload);
+
+            $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
         } catch (\Exception $e) {
             $this->db->rollback();
-            return Response::error('Failed to check bills: ' . $e->getMessage(), 500);
+            return Response::error('Failed to create bills: ' . $e->getMessage(), 500);
         }
     }
 
     protected function sendToAKTSystem($month, $year)
     {
+        // Dapetin Tahun Ajaran
+        $academicYear = Call::academicYear(ACADEMIC_YEAR_AKT_FORMAT, [
+            'year' => $year,
+            'month' => $month,
+            'day' => 1,
+        ]);
+
         // ! Kirim ke Sistem AKT
-        $levels = $this->db->fetchAll($this->db->query('SELECT * FROM levels'));
+        $levels = $this->db->fetchAll($this->db->query('SELECT * FROM jenjang'));
         $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
         $url = "$base_url/page/transaksi/backend/create.php";
         // TODO: Store the data that are being sent
         $journalData = [];
 
-        $academic_year = Call::academicYear(ACADEMIC_YEAR_AKT_FORMAT);
-
         $smk1 = ['SMK TKJ', 'SMK MM'];
 
         $import_akt_data = [
-            'tahun_ajaran' => $academic_year,
+            'tahun_ajaran' => $academicYear,
             'sumber_dana' => 'Rutin',
         ];
 
         foreach ($levels as $level) {
             $journals = $this->journal->getJournals($level['id'], true);
-            if (in_array($level['name'], $smk1)) {
+            if (in_array($level['nama'], $smk1)) {
                 if (!isset($journalData['SMK1'])) {
                     $journalData['SMK1'] = [
                         'PTUS' => 0.0,
@@ -424,22 +552,22 @@ class BillBE
                         'PBDL' => 0.0,
                     ];
                 }
-                $journalData['SMK1']['PTUS'] += $journals['per_first_day'];
-                $journalData['SMK1']['PLUS'] += $journals['per_tenth_day'];
-                $journalData['SMK1']['PNBD'] += $journals['late_fee_amount'];
-                $journalData['SMK1']['PBDL'] += $journals['late_fee_amount'];
+                $journalData['SMK1']['PTUS'] += $journals['piutang'];
+                $journalData['SMK1']['PLUS'] += $journals['pelunasan'];
+                $journalData['SMK1']['PNBD'] += $journals['hutang'];
+                $journalData['SMK1']['PBDL'] += $journals['hutang_terbayar'];
             } else {
-                $journalData[$level['name']] = [
-                    'PTUS' => $journals['per_first_day'] ?? 0.0,
-                    'PLUS' => $journals['per_tenth_day'] ?? 0.0,
-                    'PNBD' => $journals['late_fee_amount'] ?? 0.0,
-                    'PBDL' => $journals['paid_late_fee'] ?? 0.0,
+                $journalData[$level['nama']] = [
+                    'PTUS' => $journals['piutang'] ?? 0.0,
+                    'PLUS' => $journals['pelunasan'] ?? 0.0,
+                    'PNBD' => $journals['hutang'] ?? 0.0,
+                    'PBDL' => $journals['hutang_terbayar'] ?? 0.0,
                 ];
             }
         }
 
         $bulan = FormatHelper::formatMonthNameInBahasa($month);
-        $bulan_sebelum = FormatHelper::formatMonthNameInBahasa($month - 1);
+        $bulanSebelum = FormatHelper::formatMonthNameInBahasa($month - 1);
         $postValue = [];
         foreach ($journalData as $level => $journalLevel) {
             foreach ($journalLevel as $code => $amount) {
@@ -450,7 +578,7 @@ class BillBE
                         'sumber_dana' => $import_akt_data['sumber_dana'],
                         'nama_jenjang' => $level,
                         'saldo' => $amount,
-                        'bulan' => $code == 'PLUS' ? $bulan_sebelum : $bulan,
+                        'bulan' => $code == 'PLUS' ? $bulanSebelum : $bulan,
                     ];
                 }
             }
@@ -467,175 +595,73 @@ class BillBE
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
         $response = curl_exec($ch);
-        curl_close($ch);
 
-        echo $response;
-        exit();
+        curl_close($ch);
     }
 
     public function notifyBills()
     {
         $type = $_GET['type'] ?? '';
-        $status = $this->status;
 
-        $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-        $logName = $this->db->fetchAssoc($this->db->query($log));
+        $stmt = 'SELECT MAX(bulan) AS bulan, MAX(tahun) AS tahun, MAX(jatuh_tempo) AS jatuh_tempo FROM spp_tagihan';
+        $max = $this->db->fetchAssoc($this->db->query($stmt));
 
-        if ($logName == null) {
-            $this->db->commit();
-            return [
-                'status' => true,
-            ];
-        }
-        [$title, $semester, $year, $monthInt] = explode('-', $logName['log_name']);
+        // Dapetin semua tagihan di bulan tertinggi
+        $bills = $this->db->findAll('spp_tagihan', [
+            'bulan' => $max['bulan'],
+            'tahun' => $max['tahun'],
+        ]);
+        $monthName = FormatHelper::formatMonthNameInBahasa($max['bulan']);
 
-        $month = sprintf('%02d', ((int) $monthInt) + 1);
-
-        $modifymonth = new DateTime("1-$month-$year");
-        $now_formatted = $modifymonth;
-        $now = $modifymonth->format(DATE_FORMAT);
-
-        $modifymonth->modify('first day of this month');
-        $first_day = $modifymonth->format(DATE_FORMAT);
-
-        $modifymonth->modify('+8 days');
-        $day_before = $modifymonth->format(DATE_FORMAT);
-
-        $modifymonth->modify('+2 days');
-        $day_after = $modifymonth->format(DATE_FORMAT);
-
-        $modifymonth->modify('-1 days');
-        $last_day = $modifymonth->format(DATE_FORMAT);
-
-        $day_int = intval($now_formatted->format('d'));
-        $month_int = intval($now_formatted->format('m'));
-
-        $current_month = FormatHelper::formatMonthNameInBahasa($month_int);
-
-        $message = [
-            BILL_STATUS_UNPAID => "Pembayaran SPP Bulan $current_month ",
-            BILL_STATUS_PAID => "Pembayaran SPP Bulan $current_month ",
+        $msg = [
+            'success' => ['Pembayaran SPP Bulan', $monthName],
+            'failed' => ['Pembayaran SPP Bulan', $monthName],
         ];
 
-        $msg_valid = false;
-
-        $notification_type =
-            $type != ''
-                ? $type
-                : match (true) {
-                    $now == $first_day => FIRST_DAY,
-                    $now == $day_before => DAY_BEFORE,
-                    $now == $day_after => DAY_AFTER,
-                    default => NULL_VALUE,
-                };
-
-        switch ($notification_type) {
-            case FIRST_DAY:
-                $message[BILL_STATUS_UNPAID] .= "telah dibuka dan akan berakhir di tanggal *$last_day*. ";
-                $msg_valid = true;
-                break;
-            case DAY_BEFORE:
-                $message[BILL_STATUS_UNPAID] .= "akan berakhir besok, *$last_day*. ";
-                $msg_valid = true;
-                break;
-            case DAY_AFTER:
-                $message[BILL_STATUS_UNPAID] .= 'belum dibayarkan. ';
-                $message[BILL_STATUS_PAID] .= 'telah dibayarkan. ';
-                $msg_valid = true;
-                break;
+        if ($type == 1) {
+            $msg['failed'][] = 'telah dibuka dan akan berakhir di tanggal';
+            $msg['failed'][] = $max['jatuh_tempo'] . ', ';
+            $msg['success'][] = 'telah dibuka dan akan berakhir di tanggal';
+            $msg['success'][] = $max['jatuh_tempo'] . ', ';
+        } else {
+            $msg['failed'][] = 'belum dibayarkan.';
+            $msg['success'][] = 'telah dibayarkan.';
         }
 
-        $message[BILL_STATUS_UNPAID] .= "Diharapkan dapat melakukan pembayaran sebagai beikut: \n\n";
+        $msg['failed'][] = "Diharapkan dapat melakukan pembayaran sebagai berikut: \n\n";
 
-        if (!$msg_valid) {
-            return Response::error('Tidak mengirimkan notifikasi pembayaran');
-        }
+        $msgLists = [];
+        foreach ($bills as $bill) {
+            $siswa = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+            $monthlyFee = FormatHelper::formatRupiah($bill['total_nominal']);
+            $denda = FormatHelper::formatRupiah($bill['denda']);
+            $sum = FormatHelper::formatRupiah($bill['denda'] + $bill['total_nominal']);
+            $status = $bill['status'] === 'lunas';
+            $message = implode(' ', $msg[$status ? 'success' : 'failed']);
+            if($status){
+                $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswa['id']]);
+                $rels = $this->db->find('spp_pembayaran_tagihan', ['tagihan_id' => $bill['id']]); 
+                $pymt = $this->db->find('spp_pembayaran', ['id' => $rels['pembayaran_id']]); 
+                $url = $_SERVER['HTTP_HOST'];
+                $encrypted = $this->generateInvoiceURL($siswa['id'], $rels['id']);
+                $message .= "Terima kasih kepada orang tua $siswa[nama] yang telah melakukan pembayaran pada tanggal *$pymt[tanggal_pembayaran]*.";
+                $message .= "Untuk bukti pembayaran bisa dilihat di http://$url/invoice/$encrypted";
+            } else {
+                $message .= "SPP: $monthlyFee\nDenda: $denda\n*Total Pembayaran: $sum*\n\n";
+                $message .= "Virtual Account: BNI *$siswa[va]* atas nama *$siswa[nama]*\n";
+                $message .= "Alternate VA: BNI *$siswa[va_midtrans]* atas nama *$siswa[nama]*";
+            }
 
-        $payment_due = "$last_day 23:59:59";
-
-        $query = "SELECT
-                    b.virtual_account AS va, l.name AS prefix, u.name AS name, u.parent_phone,
-                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) AS late_fee,
-                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) AS monthly_fee
-                  FROM
-                    bills b JOIN
-                    users u ON b.user_id = u.id JOIN
-                    user_class c ON u.id = c.user_id JOIN
-                    levels l ON c.level_id = l.id
-                  WHERE
-                    b.payment_due <= '$payment_due' AND
-                    c.date_left IS NULL
-                  GROUP BY
-                    b.virtual_account, l.name, u.name, u.parent_phone
-                  HAVING
-                    SUM(CASE WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee ELSE 0 END) +
-                    SUM(CASE WHEN b.trx_status IN ('$status[unpaid]','$status[active]') THEN b.trx_amount ELSE 0 END) > 0";
-
-        $data = $this->db->fetchAll($this->db->query($query));
-
-        $msg_data = [];
-
-        foreach ($data as $student) {
-            $monthly_fee = FormatHelper::formatRupiah($student['monthly_fee']);
-            $late_fee = FormatHelper::formatRupiah($student['late_fee']);
-            $trx_amount = FormatHelper::formatRupiah($student['monthly_fee'] + $student['late_fee']);
-            $va = $student['va'];
-            $va_name = $student['prefix'] . '_' . $student['name'];
-            $user_msg = $message[BILL_STATUS_UNPAID] . "SPP: $monthly_fee\nDenda: $late_fee\n*Total Pembayaran: $trx_amount*\n\nVirtual Account: BNI *$va* atas nama *$va_name*";
-            $msg_data[] = [
-                'target' => $student['parent_phone'],
-                'message' => $user_msg,
+            $msgLists[] = [
+                'target' => $siswa['no_hp_ortu'],
+                'message' => $message,
                 'delay' => '1',
             ];
         }
-
-        if ($notification_type == DAY_AFTER) {
-            $query = "SELECT
-                        u.name, u.parent_phone, p.trx_timestamp, p.details,
-                        p.user_id, p.bill_id
-                      FROM
-                        payments p JOIN
-                        bills b ON b.id = p.bill_id LEFT JOIN
-                        users u ON u.id = b.user_id
-                      WHERE
-                        b.payment_due = '$payment_due'";
-
-            $data = $this->db->fetchAll($this->db->query($query));
-            $url = $_SERVER['HTTP_HOST'];
-
-            foreach ($data as $student) {
-                $cyper = $this->generateInvoiceURL($student['user_id'], $student['bill_id']);
-                $name = $student['name'];
-                $timestamp = Call::date($student['trx_timestamp']);
-                $user_msg = $message[BILL_STATUS_PAID] . "Terima kasih kepada orang tua $name yang telah melakukan pembayaran pada tanggal *$timestamp*. Untuk bukti pembayaran bisa dilihat di http://$url/invoice/$cyper";
-                $msg_data[] = [
-                    'target' => $student['parent_phone'],
-                    'message' => $user_msg,
-                    'delay' => '1',
-                ];
-            }
-        }
-        if (empty($msg_data)) {
-            return Response::error('Tidak ada pembayaran yang harus dibayar');
-        }
-
-        $messages = json_encode($msg_data);
+        $messages = json_encode($msgLists);
         $fonnte = Fonnte::sendMessage(['data' => $messages]);
 
-        return Response::success(
-            [
-                'fonnte_response' => $fonnte,
-                'messages' => $msg_data,
-            ],
-            "Notifikasi pembayaran SPP bulan $current_month berhasil dikirim",
-        );
-    }
-
-    protected function getFeeCategories()
-    {
-        $query = 'SELECT * FROM fee_categories';
-
-        return $this->db->fetchAll($this->db->query($query));
+        return ApiResponse::success(null);
     }
 
     protected function generateInvoiceURL($user, $bill)
@@ -654,11 +680,37 @@ class BillBE
         return $encrypted_with_iv;
     }
 
-    public function getPublicFeeCategories()
+    public function checkSingularBillStatus($billId, $month, $year)
     {
-        $query = 'SELECT * FROM fee_categories';
+        $details = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $billId, 'bulan' => $month, 'tahun' => $year]);
+        $status = 1;
+        foreach ($details as $d) {
+            if (!$d['lunas']) {
+                $status = 0;
+            }
+        }
+        return $status ? ['bg' => 'bg-green-100', 'text' => 'text-green-500'] : ['bg' => 'bg-red-100', 'text' => 'text-red-500'];
+    }
 
-        return ApiResponse::success($this->db->fetchAll($this->db->query($query)), 'Success get Additional Fee Categories');
+    public function countSPPRenewal($billId, $month, $year)
+    {
+        $conditions = [
+            'tagihan_id' => $billId,
+            'bulan' => ['<=', $month],
+            'tahun' => ['<=', $year],
+            'lunas' => 0,
+            'jenis' => ['!=', 'late'],
+        ];
+
+        $details = $this->db->findAll('spp_tagihan_detail', $conditions);
+
+        $sum = 0;
+
+        foreach ($details as $d) {
+            $sum += $d['nominal'];
+        }
+
+        return $sum;
     }
 
     protected function getBillFormat(int $late = 0)
@@ -669,10 +721,10 @@ class BillBE
 
         $headers = ['No', 'VA', 'NIS', 'Nama', 'Jenjang', 'Tingkat', 'Kelas', 'SPP'];
 
-        $fee_categories = $this->getFeeCategories();
+        $feeCategories = ['praktek', 'ekstra', 'daycare'];
 
-        foreach ($fee_categories as $fee) {
-            $headers[] = $fee['name'];
+        foreach ($feeCategories as $fee) {
+            $headers[] = $fee;
         }
 
         $headers[] = 'Periode Sekarang';
@@ -709,172 +761,105 @@ class BillBE
 
     public function exportBillXLSX()
     {
-        $status = $this->status;
+        $feeCategory = ['praktek', 'ekstra', 'daycare'];
+        $dataSiswa = [];
 
-        $fee_categories = $this->getFeeCategories();
-
-        $fee_category_select_list = [];
-        $fee_category_subquery_list = [];
-        $fee_category_aliases_list = [];
-
-        if ($fee_categories) {
-            foreach ($fee_categories as $category) {
-                $categoryId = (int) $category['id'];
-                $alias = 'Category' . $categoryId;
-
-                $fee_category_select_list[] = "COALESCE(uaf_agg.`$alias`, 0) AS $alias";
-                $fee_category_subquery_list[] = "SUM(CASE WHEN uaf_sub.fee_id = $categoryId THEN uaf_sub.amount ELSE 0 END) AS $alias";
-                $fee_category_aliases_list[] = "$alias";
+        $students = $this->db->findAll('siswa');
+        foreach ($students as $siswa) {
+            $bill = $this->db->find('spp_tagihan', [
+                'siswa_id' => $siswa['id'],
+                'status' => 'belum_lunas',
+            ]);
+            if (empty($bill)) {
+                continue;
             }
+            $dataSiswa[$siswa['va']] = $siswa;
+            $detail = $this->db->findAll('spp_tagihan_detail', ['lunas' => 0, 'tagihan_id' => $bill['id'] ?? 0]);
+            $dataSiswa[$siswa['va']]['detail'] = $detail;
         }
 
-        $fee_category_select_query = !empty($fee_category_select_list) ? ', ' . implode(', ', $fee_category_select_list) : '';
-        $fee_category_subquery_query = !empty($fee_category_subquery_list) ? ', ' . implode(', ', $fee_category_subquery_list) : '';
-        $fee_category_group_by_query = !empty($fee_category_aliases_list) ? ', ' . implode(', ', $fee_category_aliases_list) : '';
+        $stmt = "SELECT MAX(count_denda) as denda FROM spp_tagihan WHERE status = 'belum_lunas'";
+        $max = $this->db->fetchAssoc($this->db->query($stmt))['denda'];
 
-        $currentUserClassSubquery = "SELECT
-                uc_main.id,
-                uc_main.user_id,
-                uc_main.virtual_account,
-                uc_main.monthly_fee,
-                uc_main.level_id,
-                uc_main.grade_id,
-                uc_main.section_id
-            FROM user_class uc_main
-            INNER JOIN (
-                SELECT
-                    inn_uc.user_id,
-                    MAX(inn_uc.id) AS max_user_class_id 
-                FROM user_class inn_uc
-                INNER JOIN (
-                    SELECT
-                        most_inn_uc.user_id,
-                        MAX(most_inn_uc.grade_id) AS max_grade 
-                    FROM user_class most_inn_uc
-                    GROUP BY most_inn_uc.user_id
-                ) max_grade_details ON inn_uc.user_id = max_grade_details.user_id AND inn_uc.grade_id = max_grade_details.max_grade
-                GROUP BY inn_uc.user_id, inn_uc.grade_id
-            ) latest_class_ids ON uc_main.id = latest_class_ids.max_user_class_id
-        ";
+        $stmt = "SELECT COUNT(status) as denda FROM spp_tagihan WHERE status = 'belum_lunas'";
+        $count = $this->db->fetchAssoc($this->db->query($stmt))['denda'];
 
-        $query = "SELECT
-                    c.virtual_account AS va,
-                    u.nis AS nis,
-                    u.name AS nama,
-                    COALESCE(l.name, '-') AS level,
-                    COALESCE(g.name, '-') AS grade,
-                    COALESCE(s.name, '-') AS section,
-                    c.monthly_fee,
-                    MAX(CONCAT(YEAR(b.payment_due), '/', LPAD(MONTH(b.payment_due), 2, '0'))) AS payment_due,
-                    COUNT(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN 1 ELSE NULL END) AS late_count,
-                    SUM(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN b.late_fee ELSE 0 END) AS late_fee,
-                    SUM(CASE WHEN b.trx_status IN ('{$status['unpaid']}', '{$status['active']}') THEN b.trx_amount ELSE 0 END) + SUM(CASE WHEN b.trx_status = '{$status['unpaid']}' THEN b.late_fee ELSE 0 END) AS payable,
-                    ub.unpaid_bill_details
-                    $fee_category_select_query
-                FROM
-                    bills b
-                    LEFT JOIN users u ON b.user_id = u.id
-                    LEFT JOIN ($currentUserClassSubquery) c ON u.id = c.user_id 
-                    LEFT JOIN levels l ON c.level_id = l.id
-                    LEFT JOIN grades g ON c.grade_id = g.id
-                    LEFT JOIN sections s ON c.section_id = s.id 
-                    LEFT JOIN (
-                        SELECT
-                            uaf_sub.user_id
-                            $fee_category_subquery_query
-                        FROM
-                            user_additional_fee uaf_sub
-                        GROUP BY uaf_sub.user_id
-                    ) uaf_agg ON u.id = uaf_agg.user_id
-                    LEFT JOIN (
-                        SELECT
-                            b2.user_id,
-                            JSON_ARRAYAGG(
-                                JSON_OBJECT(
-                                    'trx_amount', b2.trx_amount,
-                                    'trx_detail', IFNULL(b2.trx_detail, JSON_OBJECT()),
-                                    'late_fee', b2.late_fee,
-                                    'payment_due', DATE_FORMAT(b2.payment_due, '%Y-%m-%d')
-                                )
-                            ) AS unpaid_bill_details
-                        FROM bills b2
-                        WHERE b2.trx_status IN ('{$status['unpaid']}', '{$status['active']}')
-                        GROUP BY b2.user_id
-                    ) ub ON ub.user_id = u.id
-                WHERE
-                    b.trx_status IN ('{$status['unpaid']}', '{$status['active']}')
-                GROUP BY
-                    c.virtual_account, u.nis, u.name,
-                    l.name, 
-                    g.name, 
-                    s.name, 
-                    c.monthly_fee,
-                    c.user_id, 
-                    c.level_id,
-                    c.grade_id,
-                    c.section_id,
-                    ub.unpaid_bill_details
-                    $fee_category_group_by_query
-                ORDER BY
-                    c.level_id, c.grade_id, c.section_id, c.virtual_account";
-
-        $result = $this->db->fetchAll($this->db->query($query));
+        $maxLateCount = (int) $max + ($count > 0 ? 1 : 0);
+        $spreadsheet = $this->getBillFormat($maxLateCount);
 
         $startRow = 2;
         $max_late = 0;
         $data = [];
         $total = 0;
+        $id = 0;
+        foreach ($dataSiswa as $siswa) {
+            $additionalFee = [
+                'praktek' => 0,
+                'ekstra' => 0,
+                'daycare' => 0,
+            ];
+            $fee = [];
 
-        foreach ($result as $index => $row) {
-            $max_late = $max_late = max($max_late, $row['late_count']);
-            $fee_json = isset($row['unpaid_bill_details']) ? json_decode($row['unpaid_bill_details'] ?? '[]', true) : [];
-            $additional_fee = [];
-            $unpaid_fee = [];
-            foreach ($fee_json as $idx => $fee_data) {
-                $details = $fee_data['trx_detail']['items'];
-                foreach ($details as $detail) {
-                    if ($detail['item_name'] == 'monthly_fee' || $detail['item_name'] == 'late_fee') {
-                        break;
+            $jenjang = $this->db->find('jenjang', ['id' => $siswa['jenjang_id']]);
+            $tingkat = $this->db->find('tingkat', ['id' => $siswa['tingkat_id']]);
+            $kelas = $this->db->find('kelas', ['id' => $siswa['kelas_id']]);
+
+            foreach ($siswa['detail'] as $d) {
+                if (isset($additionalFee[$d['jenis']])) {
+                    $additionalFee[$d['jenis']] += $d['nominal'];
+                    if (isset($fee[$d['tahun']][$d['bulan']][$d['jenis']])) {
+                        $fee[$d['tahun']][$d['bulan']][$d['jenis']] += $d['nominal'];
+                    } else {
+                        $fee[$d['tahun']][$d['bulan']][$d['jenis']] = $d['nominal'];
                     }
-                    $additional_fee[$detail['item_name']] = $additional_fee['amount'];
+                } else {
+                    if (isset($fee[$d['tahun']][$d['bulan']][$d['jenis']])) {
+                        $fee[$d['tahun']][$d['bulan']][$d['jenis']] += $d['nominal'];
+                    } else {
+                        $fee[$d['tahun']][$d['bulan']][$d['jenis']] = $d['nominal'];
+                    }
                 }
-                $unpaid_fee[$idx][] = [
-                    'periode' => substr($fee_data['payment_due'], 0, 7),
-                    'amount' => $fee_data['late_fee'] + $fee_data['trx_amount'],
-                ];
             }
 
-            $data[$index] = [$index + 1, $row['va'], $row['nis'], $row['nama'], $row['level'], $row['grade'], $row['section'], FormatHelper::formatRupiah($row['monthly_fee'])];
+            $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswa['id']]);
 
-            foreach ($fee_categories as $category) {
-                $data[$index][] = FormatHelper::formatRupiah(isset($additional_fee[$category['name']]) ? $additional_fee[$category['name']] : 0);
+            $data[$id] = [
+                $id + 1, 
+                $siswa['va'], 
+                $siswa['nis'], 
+                $siswa['nama'], 
+                $jenjang['nama'], 
+                $tingkat['nama'], 
+                $kelas['nama'] ?? '', 
+                FormatHelper::formatRupiah($siswa['spp']), 
+                FormatHelper::formatRupiah($additionalFee['praktek']), 
+                FormatHelper::formatRupiah($additionalFee['ekstra']), 
+                FormatHelper::formatRupiah($additionalFee['daycare']), 
+                $bill['tahun'] . '/' . $bill['bulan'], 
+                $bill['count_denda'] + 1
+            ];
+
+            $setCount = $bill['count_denda'] + 1;
+
+            for ($i = 0; $i <= $max; $i++) {
+                if ($setCount > 0) {
+                    $periode = $bill['tahun'] . '/' . $bill['bulan'] - $i;
+                    $amount = 0;
+                    foreach($fee[$bill['tahun']][$bill['bulan'] - $i] as $a){
+                        $amount += $a;
+                    }
+                    array_push($data[$id], $periode, FormatHelper::formatRupiah($amount));
+                } else {
+                    array_push($data[$id], '', '');
+                }
             }
+            array_push($data[$id], FormatHelper::formatRupiah($bill['total_nominal'] + $bill['denda']), '', FormatHelper::formatRupiah($bill['total_nominal'] + $bill['denda']));
 
-            $data[$index][] = $row['payment_due'];
-            $data[$index][] = $row['late_count'] + 1;
-
-            foreach ($unpaid_fee as $i => $uf) {
-                $data[$index][] = $uf[0]['periode'];
-                $data[$index][] = FormatHelper::formatRupiah($uf[0]['amount']);
-            }
-            $data[$index][] = FormatHelper::formatRupiah($row['payable']);
-            $data[$index][] = '-';
-            $data[$index][] = FormatHelper::formatRupiah($row['payable']);
-            $total += $row['payable'];
+            $id++;
         }
-        $rowLength = count($data["0"]);
-        for($i = 0; $i < $rowLength - 2; $i++){
-            $data[count($result)][] = "";
-        }
-        $data[count($result)][] = "Grand Total";
-        $data[count($result)][] = FormatHelper::formatRupiah($total);
-        
-
-        $spreadsheet = $this->getBillFormat($max_late);
-
+        $spreadsheet = $this->getBillFormat($max);
         $sheet = $spreadsheet->getActiveSheet();
         $writer = new Xlsx($spreadsheet);
-
         foreach ($data as $index => $d) {
             $sheet->fromArray($d, null, 'A' . ($startRow + $index));
         }
@@ -895,334 +880,165 @@ class BillBE
         exit();
     }
 
-    public function updateLateFee()
+    public function getFeeDetails($data)
     {
-        $billId = $_POST['bill_id'];
-        $lateFee = $_POST['late_fee'];
-
-        try {
-            $this->db->beginTransaction();
-
-            $getBill = 'SELECT * FROM bills WHERE id = ?';
-            $bill = $this->db->fetchAssoc($this->db->query($getBill, [$billId]));
-
-            $billDetail = json_decode($bill['trx_detail'], true);
-            $oldLateFee = FormatHelper::formatRupiah($bill['late_fee']);
-            $newLateFee = FormatHelper::formatRupiah($lateFee);
-
-            $billDetail['total'] = 0;
-            foreach ($billDetail['items'] as $id => $item) {
-                if ($item['item_name'] == LATE_FEE) {
-                    $billDetail['items'][$id]['amount'] = (float) $lateFee;
-                    $item['amount'] = (float) $lateFee;
-                }
-                $billDetail['total'] += $item['amount'];
-            }
-
-            $billDetailJSON = json_encode($billDetail);
-            $bill['trx_detail'] = $billDetailJSON;
-            $bill['late_fee'] = (float) $lateFee;
-
-            $updateBill = $this->db->update('bills', $bill, ['id' => $billId]);
-            if (!$updateBill) {
-                throw new Exception('Failed to update bills');
-            }
-
-            $userDetailQuery = "SELECT
-                                    u.name, u.parent_phone, MONTH(b.payment_due) AS month, YEAR(b.payment_due) AS year
-                                FROM
-                                    bills b JOIN
-                                    users u ON b.user_id = u.id
-                                WHERE
-                                    b.id = ?";
-
-            $userDetail = $this->db->fetchAssoc($this->db->query($userDetailQuery, [$billId]));
-            $name = $userDetail['name'];
-            $contact = $userDetail['parent_phone'];
-            $month = FormatHelper::formatMonthNameInBahasa($userDetail['month']);
-            $year = $userDetail['year'];
-
-            $msg = [
-                [
-                    'target' => $contact,
-                    'message' => "Biaya keterlambatan SPP *$name* pada bulan *$month $year* telah diubah dari *$oldLateFee* menjadi *$newLateFee*",
-                    'delay' => '1',
-                ],
-            ];
-
-            Fonnte::sendMessage(['data' => json_encode($msg)]);
-
-            $this->db->commit();
-            $_SESSION['msg'] = 'Biaya keterlambatan berhasil diperbarui.';
-        } catch (\Exception $e) {
-            $_SESSION['msg'] = 'Terjadi kesalahan saat mengubah biaya keterlambatan: ' . $e->getMessage();
-        } finally {
-            header('Location: /tagihan');
-        }
-    }
-
-    public function manualCreateBills()
-    {
-        try {
-            $this->db->beginTransaction();
-            $status = $this->status;
-
-            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-            $logName = $this->db->fetchAssoc($this->db->query($log));
-            [$title, $semester, $year, $month] = explode('-', $logName['log_name']);
-
-            if (!in_array((int)$month, [6, 12])){
-                $this->db->rollback();
-                return Response::error('Tagihan periode sebelumnya belum diselesaikan, harap lakukan CHECK-BILLS terlebih dahulu', 400);
-            }
-
-            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-            $logName = $this->db->fetchAssoc($this->db->query($log));
-
-            [$title, $semester, $year] = explode('-', $logName['log_name']);
-
-            $nextPeriod = [
-                'year' => (int) $year,
-                'semester' => $semester,
-            ];
-
-            $periodDate = '';
-
-            if ($semester == SECOND_SEMESTER) {
-                $nextPeriod['semester'] = FIRST_SEMESTER;
-                $periodDate = "01-07-$year";
+        $feeDetails = $this->db->findAll('spp_tagihan_detail', [
+            'tagihan_id' => $data['billId'],
+            'bulan' => (int) $data['month'],
+            'tahun' => $data['year'],
+        ]);
+        $feeRecap = [
+            'spp' => 0,
+            'denda' => 0,
+            'dynamic_fees' => [],
+        ];
+        $lateCount = 0;
+        foreach ($feeDetails as $fee) {
+            if ($fee['jenis'] == 'spp') {
+                $feeRecap['spp'] = $fee['nominal'];
+            } elseif ($fee['jenis'] == 'late') {
+                $feeRecap['denda'] = $fee['nominal'];
+                $lateCount++;
             } else {
-                $nextPeriod['year'] = $nextPeriod['year'] + 1;
-                $nextPeriod['semester'] = SECOND_SEMESTER;
-                $periodDate = '01-01-' . $nextPeriod['year'];
+                $feeRecap['dynamic_fees'][] = $fee;
             }
-
-            $logs = FormatHelper::formatSystemLog(LOG_CREATE_BILLS, $nextPeriod);
-            $logs['description'] .= ' (FORCE)';
-            $log_check = 'SELECT * FROM logs WHERE `log_name`= ?';
-            $log_check_result = $this->db->query($log_check, [$logs['log_name']]);
-
-            if ($log_check_result && $this->db->fetchAssoc($log_check_result)) {
-                $this->db->rollback();
-                return Response::error('Bills have been created before', 404);
-            }
-
-            $months = Call::monthSemester($periodDate);
-            $date = Call::splitDate($periodDate);
-            $role = USER_ROLE_STUDENT;
-
-            $students_query = "
-                SELECT
-                    u.id, u.name, c.monthly_fee,
-                    c.late_fee, c.virtual_account, c.date_joined,
-                    c.date_left, l.name AS level_name,
-                    CONCAT(
-                        COALESCE(l.name, ''),
-                        ' ',
-                        COALESCE(g.name, ''),
-                        ' ',
-                        COALESCE(s.name, '')
-                    ) AS class_name
-                FROM
-                    users u
-                    LEFT JOIN user_class c ON u.id = c.user_id
-                    LEFT JOIN levels l ON c.level_id = l.id
-                    LEFT JOIN grades g ON c.grade_id = g.id
-                    LEFT JOIN sections s ON c.section_id = s.id
-                WHERE u.role = ? AND c.date_left IS NULL
-            ";
-            $student_result = $this->db->query($students_query, [$role]);
-            $students = $this->db->fetchAll($student_result);
-
-            $bills = [];
-            $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
-                'semester' => $nextPeriod['semester'],
-                'date' => $date,
-            ]);
-
-            foreach ($students as $student) {
-                foreach ($months as $month) {
-                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/{$date['year']} 23:59:59"));
-
-                    $details = [
-                        'name' => $student['name'],
-                        'class' => $student['class_name'],
-                        'virtual_account' => $student['virtual_account'],
-                        'academic_year' => $academicYear,
-                        'billing_month' => "$month/{$date['year']}",
-                        'due_date' => $due_date,
-                        'payment_date' => null,
-                        'status' => $months[0] == $month ? $this->status['active'] : $this->status['inactive'],
-                        'items' => [
-                            [
-                                'item_name' => MONTHLY_FEE,
-                                'amount' => (int) $student['monthly_fee'],
-                            ],
-                            [
-                                'item_name' => LATE_FEE,
-                                'amount' => 0,
-                            ],
-                        ],
-                        'notes' => '',
-                        'total' => (int) $student['monthly_fee'],
-                    ];
-
-                    $bills[] = [
-                        'user_id' => $student['id'],
-                        'virtual_account' => $student['virtual_account'],
-                        'trx_id' => FormatHelper::FormatTransactionCode($student['level_name'], $student['virtual_account'], $month),
-                        'trx_amount' => (int) $student['monthly_fee'],
-                        'trx_detail' => $details,
-                        'trx_status' => $months[0] == $month ? $this->status['active'] : $this->status['inactive'],
-                        'late_fee' => 0,
-                        'payment_due' => $due_date,
-                    ];
-                }
-            }
-
-            $bill_result = $this->db->insert('bills', $bills);
-
-            $this->db->insert('logs', $logs);
-
-            $this->db->commit();
-            $this->sendToAKTSystem($months[0], $date['year']);
-            return Response::success($bill_result, 'Bills created successfully');
-        } catch (\Exception $e) {
-            $this->db->rollback();
-            return Response::error('Failed to create bills: ' . $e->getMessage(), 500);
         }
+
+        $siswa = $this->db->fetchAssoc(
+            $this->db->query(
+                "SELECT s.nama
+             FROM spp_tagihan b INNER JOIN siswa s ON s.id = b.siswa_id WHERE b.id = ?",
+                [$data['billId']],
+            ),
+        );
+        return ApiResponse::success([
+            'fee_details' => $feeRecap,
+            'siswa' => $siswa['nama'],
+        ]);
     }
-    
-    public function manualCheckBills()
+    public function updateLateFee($data)
     {
         try {
             $this->db->beginTransaction();
-
-            $status = $this->status;
-
-            // ! INISIASI KALAU ENGGA ADA BILLS SAMA SEKALI SEBELUMNYA
-            $check_bills = ["SELECT MAX(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[paid]')", "SELECT MIN(payment_due) AS payment_due FROM bills WHERE trx_status IN ('$status[active]')"];
-            $log_attr = '';
-
-            foreach ($check_bills as $check) {
-                $result = $this->db->query($check);
-                $data = $this->db->fetchAssoc($result);
-
-                if ($data && $data['payment_due']) {
-                    $log_attr = $data['payment_due'];
-                    continue;
-                }
-            }
-
-            if ($log_attr == '') {
-                $this->db->rollback();
-                return Response::error('No bills to check', 404);
-            }
-
-            $semester = Call::semester($log_attr);
-            $date = Call::splitDate($log_attr);
-            $logs = FormatHelper::formatSystemLog(LOG_CHECK_BILLS, [
-                'semester' => $semester,
-                'year' => $date['year'],
-                'month' => $date['month'],
+            $bill = $this->db->find('spp_tagihan', ['id' => $data['billId']]);
+            $initialLateFee = $this->db->find('spp_tagihan_detail', [
+                'tagihan_id' => $bill['id'],
+                'jenis' => 'late',
+                'bulan' => $data['month'],
+                'tahun' => $data['year'],
             ]);
-            $logs['description'] .= ' (FORCE)';
+            $trx_id = Call::uuidv4();
+            $response = $this->db->update(
+                'spp_tagihan_detail',
+                ['nominal' => $data['lateFee']],
+                [
+                    'tagihan_id' => $data['billId'],
+                    'jenis' => 'late',
+                    'bulan' => $data['month'],
+                    'tahun' => $data['year'],
+                ],
+            );
+            $this->db->update(
+                'spp_tagihan',
+                [
+                    'denda' => $bill['denda'] - $initialLateFee['nominal'] + $data['lateFee'],
+                    'midtrans_trx_id' => $trx_id,
+                ],
+                ['id' => $data['billId']],
+            );
+            // $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
 
-            $log_check = 'SELECT * FROM logs WHERE `log_name`= ?';
-            $log_check_result = $this->db->query($log_check, [$logs['log_name']]);
-
-            if ($log_check_result && $this->db->fetchAssoc($log_check_result)) {
-                $this->db->rollback();
-                return Response::error('Bills have been checked before', 404);
+            $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+            if (!$st) {
+                throw new Exception("Data siswa dengan ID " . $bill['siswa_id'] . " tidak ditemukan.");
             }
 
-            $temp_check_table = "CREATE TEMPORARY TABLE temp_bills AS
-                SELECT b.id, next_b.id AS next_b_id, b.payment_due, b.virtual_account
-                FROM bills b
-                LEFT JOIN bills next_b ON next_b.virtual_account = b.virtual_account
-                AND next_b.payment_due = (
-                    SELECT MIN(nb.payment_due)
-                    FROM bills nb
-                    WHERE nb.virtual_account = b.virtual_account
-                    AND nb.payment_due > b.payment_due
-                    AND nb.trx_status != '$status[active]'
-                )
-                WHERE b.trx_status IN ('$status[active]', '$status[paid]', '$status[unpaid]')
-            ";
+            $bd = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0, 'bulan' => ["<=", $bill['bulan']]]);
+            if (empty($bd)) {
+                throw new Exception("Tidak ada detail tagihan yang belum lunas untuk tagihan ID " . $bill['id']);
+            }
 
-            $this->db->query($temp_check_table);
+            $items = [];
+            $sum = 0;
+            foreach ($bd as $d) {
+                $items[] = [
+                    'id'       => $d['id'],
+                    'price'    => (int)$d['nominal'], 
+                    'quantity' => 1,
+                    'name'     => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                ];
+                $sum += (int)$d['nominal'];
+            }
 
-            $updateBills = "UPDATE bills b
-                LEFT JOIN temp_bills t ON b.id = t.id
-                LEFT JOIN bills next_b ON next_b.id = t.next_b_id
-                LEFT JOIN user_class c ON c.virtual_account = b.virtual_account AND c.date_left IS NULL
-                SET
-                    b.trx_status = CASE
-                        WHEN b.trx_status = '$status[active]' THEN '$status[unpaid]'
-                        WHEN b.trx_status = '$status[disabled]' THEN '$status[disabled]'
-                        ELSE b.trx_status
-                    END,
-                    b.late_fee = CASE
-                        WHEN b.trx_status = '$status[active]' THEN COALESCE(c.late_fee, 0)
-                        WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee + COALESCE(c.late_fee, 0)
-                        WHEN b.trx_status = '$status[disabled]' THEN 0
-                        ELSE b.late_fee
-                    END,
-                    next_b.trx_status = CASE
-                        WHEN b.trx_status IN ('$status[late]', '$status[unpaid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                        THEN '$status[active]'
-                        WHEN b.trx_status IN ('$status[active]', '$status[paid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                        THEN '$status[active]'
-                        ELSE next_b.trx_status
-                    END,
-                    b.trx_detail = CASE
-                        WHEN b.trx_status IN ('$status[active]', '$status[unpaid]') THEN
-                            JSON_SET(
-                                b.trx_detail,
-                                '$.status',
-                                    CASE
-                                        WHEN b.trx_status = '$status[active]' THEN '$status[unpaid]'
-                                        ELSE JSON_EXTRACT(b.trx_detail, '$.status')
-                                    END,
-                                '$.total',
-                                    CAST(JSON_EXTRACT(b.trx_detail, '$.total') AS DECIMAL(14,2)) + COALESCE(c.late_fee, 0),
-                                '$.items[1].amount',
-                                    CASE
-                                        WHEN b.trx_status = '$status[active]' THEN COALESCE(c.late_fee, 0)
-                                        WHEN b.trx_status = '$status[unpaid]' THEN b.late_fee + COALESCE(c.late_fee, 0)
-                                        ELSE JSON_EXTRACT(b.trx_detail, '$.items[1].amount')
-                                    END
-                            )
-                        ELSE
-                            b.trx_detail
-                    END,
-                    next_b.trx_detail = CASE
-                        WHEN b.trx_status IN ('$status[active]', '$status[unpaid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                        THEN JSON_SET(next_b.trx_detail, '$.status', '$status[active]')
+            $mdResult = $this->midtrans->charge([
+                'payment_type' => 'bank_transfer',
+                'transaction_details' => [
+                    'gross_amount' => $sum,
+                    'order_id' => $trx_id,
+                ],
+                'customer_details' => [
+                    'email' => '', 
+                    'first_name' => $st['nama'],
+                    'last_name' => '',
+                    'phone' => $st['no_hp_ortu'],
+                ],
+                'item_details' => $items,
+                'bank_transfer' => [
+                    'bank' => 'bni',
+                    'va_number' => $st['va'], 
+                ],
+            ]);
 
-                        WHEN b.trx_status IN ('$status[active]', '$status[paid]')
-                            AND next_b.trx_status = '$status[inactive]'
-                        THEN JSON_SET(next_b.trx_detail, '$.status', '$status[active]')
-                        ELSE next_b.trx_detail
-                    END
-                WHERE b.trx_status IN ('$status[active]', '$status[paid]', '$status[unpaid]')";
+            if (isset($mdResult->va_numbers[0]->va_number)) {
+                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
+            } else {
+                throw new Exception("Transaksi Midtrans berhasil, namun tidak menerima VA Number.");
+            }
 
-            $this->db->query($updateBills);
-            $this->db->query('DROP TEMPORARY TABLE IF EXISTS temp_bills');
+            // Memasukan Jurnal
+            $diff = $initialLateFee['nominal'] - $data['lateFee'];
+            $academicYear = Call::academicYear(ACADEMIC_YEAR_AKT_FORMAT, [
+                'year' => $data['year'],
+                'month' => $data['month'],
+                'day' => 1,
+            ]);
 
-            $this->db->insert('logs', $logs);
+            $siswa = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+            $jenjang = $this->db->find('jenjang', ['id' => $siswa['jenjang_id']]);
+            
+            $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+            $url = "$base_url/page/transaksi/backend/create.php";
+
+            $bulanStr = FormatHelper::formatMonthNameInBahasa($data['month']);
+
+            // PNBD
+            $postValue[] = [
+                'kode_transaksi' => 'PNBD',
+                'tahun_ajaran' => $academicYear,
+                'sumber_dana' => 'Rutin',
+                'nama_jenjang' => $jenjang['nama'],
+                'saldo' => $diff,
+                'bulan' => $bulanStr,
+                'penggantian_denda' => true
+            ];
+
+            $json_data = json_encode($postValue);
+            $headers = ['Content-Type: application/json'];
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $json_data);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+            $response = curl_exec($ch);
+            curl_close($ch);
+
 
             $this->db->commit();
-
-            $this->sendToAKTSystem($date['month'] + 1, $date['year']);
-
-            return Response::success(true, 'Bills checked successfully');
+            return ApiResponse::success($response);
         } catch (\Exception $e) {
-            $this->db->rollback();
-            return Response::error('Failed to check bills: ' . $e->getMessage(), 500);
+            return ApiResponse::error($e);
         }
     }
 }

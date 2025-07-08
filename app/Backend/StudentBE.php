@@ -1,739 +1,1070 @@
 <?php
 
-namespace app\Backend;
+namespace App\Backend;
 
+use app\Backend\BillBE;
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
-use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
-use DateTime;
+use App\Midtrans\Midtrans;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Exception;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class StudentBE
 {
     private $db;
+    private $classBE;
+    private $billBE;
+    private $midtrans;
 
-    private $status = [
-        'paid' => BILL_STATUS_PAID,
-        'unpaid' => BILL_STATUS_UNPAID,
-        'late' => BILL_STATUS_LATE,
-        'inactive' => BILL_STATUS_INACTIVE,
-        'active' => BILL_STATUS_ACTIVE,
-        'disabled' => BILL_STATUS_DISABLED,
-    ];
-
-    private $month_translate = [
-        'January' => 'Januari',
-        'February' => 'Februari',
-        'March' => 'Maret',
-        'April' => 'April',
-        'May' => 'Mei',
-        'June' => 'Juni',
-        'July' => 'Juli',
-        'August' => 'Agustus',
-        'September' => 'September',
-        'October' => 'Oktober',
-        'November' => 'November',
-        'December' => 'Desember',
-    ];
-
-    public function __construct($database)
+    public function __construct($database, ClassBE $classBE, BillBE $billBE, Midtrans $midtrans)
     {
         $this->db = $database;
+        $this->classBE = $classBE;
+        $this->billBE = $billBE;
+        $this->midtrans = $midtrans;
     }
 
-    protected function translateMonthToIndonesia($month)
+    /**
+     * Mengambil daftar siswa aktif sebagai filter sesuai dengan
+     * data jenjang, tingkat, dan kelas yang ada
+     */
+    public function getStudentFilter()
     {
-        return strtr($month, $this->month_translate);
+        $params = ['s.deleted_at IS NULL'];
+        $filter = [];
+
+        if (!empty($_GET['filter-jenjang'])) {
+            $params[] = 's.jenjang_id = ?';
+            $filter[] = $_GET['filter-jenjang'];
+        }
+        if (!empty($_GET['filter-tingkat'])) {
+            $params[] = 's.tingkat_id = ?';
+            $filter[] = $_GET['filter-tingkat'];
+        }
+        if (!empty($_GET['filter-kelas'])) {
+            $params[] = 's.kelas_id = ?';
+            $filter[] = $_GET['filter-kelas'];
+        }
+
+        $stmt =
+            "SELECT
+                    s.id, s.nama
+                 FROM
+                    siswa s
+                 WHERE " .
+            implode(' AND ', $params) .
+            ' ORDER BY s.nama';
+        return ApiResponse::success($this->db->fetchAll($this->db->query($stmt, $filter)), 'Berhasil mendapatkan data siswa', 200);
     }
 
+    /**
+     * Mengambil daftar siswa untuk ditampilkan di tabel.
+     */
     public function getStudents()
     {
         $query = "SELECT
-                    u.id, u.nis, u.name, l.name AS level, g.name AS grade, s.name AS section,
-                    u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee,
-                    MAX(p.trx_timestamp) AS latest_payment, c.date_left
+                    s.id, s.nis, s.nama, j.nama AS jenjang, t.nama AS tingkat, k.nama AS kelas,
+                    s.va, s.spp, s.updated_at,
+                    (SELECT MAX(p.tanggal_pembayaran) FROM spp_pembayaran p WHERE p.siswa_id = s.id) AS latest_payment
                   FROM
-                    users u
-                    LEFT JOIN (
-                        SELECT uc1.*
-                        FROM user_class uc1
-                        LEFT JOIN user_class uc2
-                            ON uc1.user_id = uc2.user_id
-                            AND (
-                                (uc2.date_left IS NULL AND uc1.date_left IS NOT NULL)
-                            OR
-                                (uc2.date_left > uc1.date_left AND uc2.date_left IS NOT NULL)
-                            OR
-                                (uc1.date_left <=> uc2.date_left AND uc2.id > uc1.id)
-                            )
-                        WHERE uc2.user_id IS NULL
-                    ) c ON u.id = c.user_id
-                    INNER JOIN levels l ON c.level_id = l.id
-                    INNER JOIN grades g ON c.grade_id = g.id
-                    LEFT JOIN sections s ON c.section_id = s.id
-                    LEFT JOIN payments p ON u.id = p.user_id
+                    siswa s
+                    LEFT JOIN jenjang j ON s.jenjang_id = j.id
+                    LEFT JOIN tingkat t ON s.tingkat_id = t.id
+                    LEFT JOIN kelas k ON s.kelas_id = k.id
                   WHERE
-                    u.role = 'ST' AND
-                    u.deleted_at IS NULL
-                  ";
+                    s.deleted_at IS NULL";
+
+        $params = [];
 
         if (!empty($_GET['search'])) {
-            $search = $_GET['search'];
-            $query .= " AND (
-                        u.nis LIKE '%$search%' OR
-                        u.name LIKE '%$search%' OR
-                        u.phone LIKE '%$search%' OR
-                        u.email LIKE '%$search%' OR
-                        u.parent_phone LIKE '%$search%' OR
-                        c.virtual_account LIKE '%$search%'
-                    )";
-        }
-        if (!empty($_GET['level-filter'])) {
-            $level = $_GET['level-filter'];
-            $query .= " AND c.level_id = $level";
+            $search = '%' . trim($_GET['search']) . '%';
+            $query .= ' AND (s.nama LIKE ? OR s.nis LIKE ? OR s.va LIKE ?)';
+            $params[] = $search;
+            $params[] = $search;
+            $params[] = $search;
         }
 
-        if (!empty($_GET['grade-filter'])) {
-            $grade = $_GET['grade-filter'];
-            $query .= " AND c.grade_id = $grade";
+        if (!empty($_GET['jenjang_id'])) {
+            $query .= ' AND s.jenjang_id = ?';
+            $params[] = (int) $_GET['jenjang_id'];
         }
 
-        if (!empty($_GET['section-filter'])) {
-            $section = $_GET['section-filter'];
-            $query .= " AND c.section_id = $section";
+        if (!empty($_GET['tingkat_id'])) {
+            $query .= ' AND s.tingkat_id = ?';
+            $params[] = (int) $_GET['tingkat_id'];
         }
 
-        $query .= " GROUP BY
-                u.id, u.nis, u.name, l.name, g.name, s.name,
-                u.phone, u.email, u.parent_phone, c.virtual_account, c.monthly_fee, c.date_left";
+        if (!empty($_GET['kelas_id'])) {
+            $query .= ' AND s.kelas_id = ?';
+            $params[] = (int) $_GET['kelas_id'];
+        }
 
-        $result = $this->db->query($query);
+        $query .= ' GROUP BY s.id ORDER BY j.id, t.id, k.id, s.nama ASC';
+
+        $result = $this->db->query($query, $params);
         return $this->db->fetchAll($result);
     }
 
-    protected function getStudentFormat()
+    /**
+     * Menerima dan memproses data dari form tambah siswa manual.
+     */
+    public function formCreateStudent()
     {
-        $spreadsheet = new Spreadsheet();
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
 
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $headers = ['NIS', 'Nama', 'Jenjang', 'Tingkat', 'Kelas', 'Alamat', 'Tanggal Lahir', 'Nomor Telepon', 'Alamat Email', 'Nomor Orang Tua'];
-
-        $sheet->fromArray([$headers], null, 'A1');
-
-        $highestColumn = $sheet->getHighestColumn();
-
-        foreach (range('A', $highestColumn) as $columnID) {
-            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return ApiResponse::error('Format JSON tidak valid.', 400);
         }
 
-        $headerStyle = [
-            'font' => [
-                'bold' => true,
-            ],
-            'alignment' => [
-                'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
-            ],
+        $required = ['nama', 'nis', 'jenjang_id', 'tingkat_id', 'spp'];
+        $errors = [];
+        foreach ($required as $field) {
+            if (empty($data[$field])) {
+                $errors[] = "Field '$field' wajib diisi.";
+            }
+        }
+        if (!empty($errors)) {
+            return ApiResponse::error('Data tidak lengkap.', 422, $errors);
+        }
+
+        $nis = trim($data['nis']);
+
+        $existingStudent = $this->db->find('siswa', ['nis' => $nis]);
+
+        if ($existingStudent) {
+            return ApiResponse::error("NIS '{$nis}' sudah terdaftar.", 409);
+        }
+
+        $jenjang = $this->db->find('jenjang', ['id' => (int) $data['jenjang_id']]);
+        if (!$jenjang) {
+            return ApiResponse::error('Jenjang tidak valid.', 422);
+        }
+        $va = FormatHelper::formatVA($jenjang['va_code'], $nis);
+        $insertData = [
+            'nama' => trim($data['nama']),
+            'nis' => $nis,
+            'jenjang_id' => (int) $data['jenjang_id'],
+            'tingkat_id' => (int) $data['tingkat_id'],
+            'kelas_id' => isset($data['kelas_id']) ? (int) $data['kelas_id'] : null,
+            'va' => $va,
+            'no_hp_ortu' => $data['no_hp_ortu'] ?? null,
+            'spp' => (float) $data['spp'],
         ];
 
-        $sheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
-
-        return $spreadsheet;
-    }
-
-    public function getStudentFormatXLSX()
-    {
-        $spreadsheet = $this->getStudentFormat();
-        $writer = new Xlsx($spreadsheet);
-
-        if (ob_get_length()) {
-            ob_end_clean();
-        }
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="import_student_format.xlsx"');
-        header('Cache-Control: max-age=0');
-
-        $writer->save('php://output');
-        exit();
-    }
-
-    public function exportStudentXLSX()
-    {
-        $spreadsheet = $this->getStudentFormat();
-        $sheet = $spreadsheet->getActiveSheet();
-        $writer = new Xlsx($spreadsheet);
-
-        $query = "SELECT
-                    u.nis, u.name, l.name AS level, g.name AS grade, s.name AS section,
-                    u.address, u.dob, u.phone, u.email, u.parent_phone
-                  FROM
-                    users u
-                    LEFT JOIN user_class c ON u.id = c.user_id
-                    LEFT JOIN levels l ON c.level_id = l.id
-                    LEFT JOIN grades g ON c.grade_id = g.id
-                    LEFT JOIN sections s ON c.section_id = s.id
-                  WHERE
-                    u.role = 'ST' AND c.date_left IS NULL";
-
-        $students = $this->db->fetchAll($this->db->query($query));
-
-        $startRow = 2;
-        foreach ($students as $index => $student) {
-            $cleaned = array_map(fn($v) => $v ?? '', array_values($student));
-            $sheet->fromArray($cleaned, null, 'A' . ($startRow + $index));
-        }
-
-        $highestColumn = $sheet->getHighestColumn();
-        foreach (range('A', $highestColumn) as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        if (ob_get_length()) {
-            ob_end_clean();
-        }
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="export_student.xlsx"');
-        header('Cache-Control: max-age=0');
-
-        $writer->save('php://output');
-        exit();
-    }
-
-    public function deleteStudent($id)
-    {
-        $now = new Datetime();
-        $query = "UPDATE users SET deleted_at='$now' WHERE id=$id";
-        return $this->db->query($query);
-    }
-
-    public function updateStudent()
-    {
-        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
-            return ApiResponse::error('Invalid API method', 405);
-        }
-
-        $rawData = file_get_contents('php://input');
-
-        $data = json_decode($rawData, true);
-        $status = $this->status;
-
-        $userId = $data['user_id'];
-        $nis = trim($data['edit-nis'] ?? '');
-        $name = trim($data['edit-name'] ?? '');
-        $dob = trim($data['edit-dob'] ?? '');
-        $phone = trim($data['edit-phone-number'] ?? '');
-        $email = trim($data['edit-email-address'] ?? '');
-        $parentPhone = trim($data['edit-parent-phone'] ?? '');
-        $address = trim($data['edit-address'] ?? '');
-        $levelId = trim($data['edit-level'] ?? '');
-        $gradeId = trim($data['edit-grade'] ?? '');
-        $sectionIdInput = $data['edit-section'] ?? '';
-        $monthlyFee = trim($data['edit-monthly-fee'] ?? '');
-
-        $year = trim($data['edit-academic-year'] ?? '');
-        $semester = trim($data['edit-semester'] ?? '');
-        $month = trim($data['edit-month'] ?? '');
-
-        $existingFees = $data['edit_additional_fee'] ?? [];
-        $newFees = $data['new_fee'] ?? [];
-
-        $errors = [];
-        if (!$userId) {
-            $errors[] = 'Invalid User ID.';
-        }
-        if (empty($nis)) {
-            $errors[] = 'NIS is required.';
-        }
-        if (empty($name)) {
-            $errors[] = 'Nama is required.';
-        }
-        if (empty($parentPhone)) {
-            $errors[] = 'Telepon Orang Tua is required.';
-        }
-        if (!$levelId) {
-            $errors[] = 'Jenjang is required.';
-        }
-        if (!$gradeId) {
-            $errors[] = 'Tingkat is required.';
-        }
-        if ($monthlyFee === false || $monthlyFee < 0) {
-            $errors[] = 'SPP Bulanan is invalid or missing.';
-        }
-
-        if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Format Alamat Email invalid.';
-        }
-        if (!empty($dob)) {
-            $d = DateTime::createFromFormat('Y-m-d', $dob);
-            if (!$d || $d->format('Y-m-d') !== $dob) {
-                $errors[] = 'Format Tanggal Lahir invalid (YYYY-MM-DD).';
-            }
-        } else {
-            $dob = null;
-        }
-
-        $sectionId = $sectionIdInput === '' || !filter_var($sectionIdInput, FILTER_VALIDATE_INT) ? null : (int) $sectionIdInput;
-
-        $periodDate = null;
-        $processFees = false;
-        if ($year && $semester && $month) {
-            $processFees = true;
-            try {
-                $periodDate = Call::getFirstDay(['year' => $year, 'semester' => $semester, 'month' => $month]);
-                if (!$periodDate) {
-                    throw new Exception('Could not calculate period date.');
-                }
-
-                foreach ($existingFees as $feeId => $amount) {
-                    if (!is_numeric($feeId) || !is_numeric($amount) || $amount < 0) {
-                        $errors[] = 'Invalid amount for existing fee.';
-                        break;
-                    }
-                }
-                foreach ($newFees as $uniqueId => $catId) {
-                    if (!$catId['amount'] || !is_numeric($catId['amount']) || $catId['amount'] < 0) {
-                        $errors[] = 'Invalid amount for new fee.';
-                        break;
-                    }
-                    if (!filter_var($catId['category'], FILTER_VALIDATE_INT)) {
-                        $errors[] = 'Invalid category for new fee.';
-                        break;
-                    }
-                }
-            } catch (Exception $e) {
-                $processFees = false;
-                $errors[] = 'Invalid period: ' . $e->getMessage();
-            }
-        }
-
-        if (!empty($errors)) {
-            return ApiResponse::error('Invalid input data.', 400, $errors);
-        }
-
-        $this->db->beginTransaction();
         try {
-            $currentClassStmt = $this->db->query('SELECT id, level_id, grade_id, section_id FROM user_class WHERE user_id = ? AND date_left IS NULL LIMIT 1', [$userId]);
-            $currentClass = $currentClassStmt ? $this->db->fetchAssoc($currentClassStmt) : null;
-            $va = '';
+            $this->db->beginTransaction();
+
+            // Menggunakan method insert() yang baru
+            $newStudentId = $this->db->insert('siswa', $insertData);
+            if (!$newStudentId) {
+                throw new Exception('Gagal menyimpan data siswa.');
+            }
+
             $userData = [
-                'nis' => $nis,
-                'name' => $name,
-                'dob' => $dob,
-                'phone' => empty($phone) ? null : $phone,
-                'email' => empty($email) ? null : $email,
-                'parent_phone' => $parentPhone,
-                'address' => empty($address) ? null : $address,
-                'updated_at' => (new DateTime())->format('Y-m-d H:i:s'),
+                'username' => $insertData['va'],
+                'password' => FormatHelper::hashPassword($va),
+                'role' => 'siswa',
+                'siswa_id' => $newStudentId,
             ];
-            $userUpdateResult = $this->db->update('users', $userData, ['id' => $userId]);
-            if ($userUpdateResult === false) {
-                throw new Exception('Failed to update user information.');
-            }
-
-            $feeChanged = false;
-            $classChanged = true;
-            $fee_total = $monthlyFee;
-            if ($currentClass) {
-                if ($currentClass['level_id'] == $levelId && $currentClass['grade_id'] == $gradeId && $currentClass['section_id'] == $sectionId) {
-                    $classChanged = false;
-                }
-            }
-
-            if ($classChanged) {
-                $feeChanged = true;
-                $now = (new DateTime())->format('Y-m-d H:i:s');
-                if ($currentClass) {
-                    $endClassResult = $this->db->update('user_class', ['date_left' => $now], ['id' => $currentClass['id']]);
-                    if ($endClassResult === false) {
-                        throw new Exception('Failed to end previous class enrollment.');
-                    }
-                }
-
-                $classList = $this->getClassList();
-                $sectionIdKey = $sectionId ?? '';
-                $lookup = $classList[$levelId][$gradeId][$sectionIdKey] ?? null;
-                if (!$lookup) {
-                    throw new Exception('Could not find details for the selected new class.');
-                }
-
-                $newMonthlyFee = $monthlyFee;
-                $newLateFee = $lookup['late_fee'] ?? 0;
-
-                // Get Active Semester
-                $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-                $logName = $this->db->fetchAssoc($this->db->query($log));
-                if(!empty($logName)){
-                    [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
-                    $date = "$year-$month-01";
-                } else {
-                    $split = Call::splitDate();
-                    $semester1 = Call::semester();
-                    $year = $split['year'];
-                    $month = $split['month'];
-                    $day = $split['day'];
-                    $date = "$year-$month-$day";
-                }
-
-                if (in_array($month, [6, 12])) {
-                    $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-                    $logName = $this->db->fetchAssoc($this->db->query($log));
-
-                    [$title, $semester2, $year] = explode('-', $logName['log_name']);
-                    if ($semester1 != $semester2) {
-                        $date = "$year-" . ((int) $month + 1) . '-01';
-                    }
-                }
-                $va = FormatHelper::formatVA($lookup['va_prefix'], $nis, $date);
-                $password = md5($va);
-
-                $newClassData = [
-                    'user_id' => $userId,
-                    'level_id' => $levelId,
-                    'grade_id' => $gradeId,
-                    'section_id' => $sectionId,
-                    'monthly_fee' => $newMonthlyFee,
-                    'late_fee' => $newLateFee,
-                    'virtual_account' => $va,
-                    'password' => $password,
-                    'date_joined' => $now,
-                    'date_left' => null,
-                ];
-                $insertResult = $this->db->insert('user_class', $newClassData);
-                if (!$insertResult) {
-                    throw new Exception('Failed to insert new class enrollment.');
-                }
-            } else {
-                if ($currentClass) {
-                    $updateFeeResult = $this->db->update('user_class', ['monthly_fee' => $monthlyFee], ['id' => $currentClass['id']]);
-                    if ($updateFeeResult === false) {
-                        throw new Exception('Failed to update monthly fee for existing class.');
-                    }
-                } else {
-                    throw new Exception('Internal error: Class not changed but no current class found.');
-                }
-            }
-
-            $additionalFeeChanged = false;
-
-            if ($processFees && $periodDate) {
-                $existingFeesStmt = $this->db->query('SELECT id, fee_id, amount FROM user_additional_fee WHERE user_id = ? AND period = ?', [$userId, $periodDate]);
-                if (!$existingFeesStmt) {
-                    throw new Exception('Failed to query existing fees.');
-                }
-                $currentFeesMap = [];
-                while ($row = $this->db->fetchAssoc($existingFeesStmt)) {
-                    $currentFeesMap[$row['fee_id']] = ['id' => $row['id'], 'amount' => $row['amount']];
-                }
-                $processedFeeIds = [];
-
-                foreach ($existingFees as $feeId => $newAmount) {
-                    $feeId = (int) $feeId;
-                    $newAmount = (float) $newAmount;
-                    $processedFeeIds[] = $feeId;
-                    $feeChanged = true;
-                    if (isset($currentFeesMap[$feeId])) {
-                        if ($currentFeesMap[$feeId]['amount'] != $newAmount) {
-                            $fee_total += $newAmount;
-                            $additionalFeeChanged = true;
-                            $updateFeeResult = $this->db->update('user_additional_fee', ['amount' => $newAmount], ['id' => $currentFeesMap[$feeId]['id']]);
-                            if ($updateFeeResult === false) {
-                                throw new Exception("Failed to update additional fee (ID: $feeId).");
-                            }
-                        } else {
-                            $fee_total += $currentFeesMap[$feeId]['amount'];
-                        }
-                    } else {
-                        $additionalFeeChanged = true;
-                        $fee_total += $newAmount;
-                        $feeData = ['user_id' => $userId, 'fee_id' => $feeId, 'amount' => $newAmount, 'period' => $periodDate];
-                        $insertResult = $this->db->insert('user_additional_fee', $feeData);
-                        if (!$insertResult) {
-                            throw new Exception("Failed to insert submitted additional fee (ID: $feeId).");
-                        }
-                    }
-                }
-
-                foreach ($newFees as $catId) {
-                    $category = (int) $catId['category'];
-                    if (isset($catId['amount']) && is_numeric($catId['amount']) && $catId['amount'] >= 0) {
-                        $amount = (float) $catId['amount'];
-                        if (!isset($currentFeesMap[$category]) || !in_array($category, $processedFeeIds)) {
-                            $feeChanged = true;
-                            $additionalFeeChanged = true;
-                            $processedFeeIds[] = $category;
-                            $fee_total += (int) $amount;
-                            $newFeeData = ['user_id' => $userId, 'fee_id' => $category, 'amount' => $amount, 'period' => $periodDate];
-                            $insertResult = $this->db->insert('user_additional_fee', $newFeeData);
-                            if (!$insertResult) {
-                                throw new Exception("Failed to insert new additional fee (Category ID: $category).");
-                            }
-                        }
-                    }
-                }
-
-                foreach ($currentFeesMap as $feeId => $feeDetails) {
-                    if (!in_array($feeId, $processedFeeIds)) {
-                        $feeChanged = true;
-                        $additionalFeeChanged = true;
-                        $deleteResult = $this->db->delete('user_additional_fee', ['id' => $feeDetails['id']]);
-                        if ($deleteResult === false) {
-                            throw new Exception("Failed to delete additional fee (DB ID: {$feeDetails['id']}).");
-                        }
-                    }
-                }
-
-                if ($additionalFeeChanged) {
-                    $splitDate = Call::splitDate($periodDate);
-                    $billStmt = $this->db->query(
-                        "SELECT
-                                    id, trx_detail
-                                FROM bills
-                                WHERE
-                                    user_id = ? AND
-                                    MONTH(payment_due) = ? AND
-                                    YEAR(payment_due) = ? AND
-                                    trx_status IN (?, ?)",
-                        [$userId, $splitDate['month'], $splitDate['year'], $status['active'], $status['inactive']],
-                    );
-                    if (!$billStmt) {
-                        throw new Exception('Failed to query existing fees.');
-                    }
-                    $billData = $this->db->fetchAssoc($billStmt);
-                    if (!$billData) {
-                        throw new Exception('No matching bill found to update for user ' . $userId . ' period ' . $periodDate);
-                    }
-
-                    $detail = json_decode($billData['trx_detail'], true);
-                    if (json_last_error() !== JSON_ERROR_NONE) {
-                        throw new Exception('Failed to decode existing trx_detail JSON for bill ID ' . $billData['id'] . '. Error: ' . json_last_error_msg());
-                    }
-
-                    $items = [
-                        [
-                            'amount' => (float) $monthlyFee,
-                            'item_name' => 'monthly_fee',
-                        ],
-                        [
-                            'amount' => (float) $detail['items'][1]['amount'],
-                            'item_name' => $detail['items'][1]['item_name'],
-                        ],
-                    ];
-
-                    if (!isset($detail['items']) || !is_array($detail['items']) || !isset($detail['items'][1])) {
-                        throw new Exception('Invalid structure in existing trx_detail items for bill ID ' . $billData['id']);
-                    }
-
-                    $items = [
-                        [
-                            'amount' => (float) $monthlyFee,
-                            'item_name' => 'monthly_fee',
-                        ],
-                        [
-                            'amount' => (float) $detail['items'][1]['amount'],
-                            'item_name' => $detail['items'][1]['item_name'],
-                        ],
-                    ];
-
-                    $finalAdditionalFeesStmt = $this->db->query(
-                        "SELECT
-                                                                    uaf.fee_id, f.name AS fee_name, uaf.amount
-                                                                FROM
-                                                                    user_additional_fee uaf LEFT JOIN
-                                                                    fee_categories f ON uaf.fee_id = f.id
-                                                                WHERE uaf.user_id = ? AND uaf.period = ?",
-                        [$userId, $periodDate],
-                    );
-                    if (!$finalAdditionalFeesStmt) {
-                        throw new Exception('Failed to re-query final additional fees.');
-                    }
-
-                    foreach ($this->db->fetchAll($finalAdditionalFeesStmt) as $f) {
-                        $items[] = [
-                            'amount' => (float) $f['amount'],
-                            'item_name' => $f['fee_name'],
-                        ];
-                    }
-                    $detail['items'] = $items;
-                    $detail['total'] = $fee_total;
-                    $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
-                    $detailsJSON = json_encode($detail, $jsonFlags);
-
-                    if ($detailsJSON === false) {
-                        throw new Exception('Failed to encode bill items to JSON. Error: ' . json_last_error_msg());
-                    }
-                    $query = "UPDATE bills SET trx_detail = '$detailsJSON', trx_amount = '$fee_total' WHERE trx_status IN ('$status[active]', '$status[inactive]') AND MONTH(payment_due) = '$splitDate[month]' AND YEAR(payment_due) = '$splitDate[year]' AND user_id = $userId";
-
-                    $this->db->query($query);
-                }
-            }
-
-            if ($classChanged) {
-                $updateBillTotal = $this->db->update('bills', ['trx_amount' => $fee_total], ['user_id' => $userId, 'trx_status' => [$status['active'], $status['inactive']]]);
-                if ($updateBillTotal === false) {
-                    throw new Exception('Failed to update bill totals');
-                }
-            }
-
-            // Update Bill Details
-            if (!$additionalFeeChanged) {
-                $date = Call::Date();
-                $splitDate = Call::splitDate();
-                $detailsQuery = "SELECT
-                                    id, trx_detail
-                                 FROM bills
-                                 WHERE
-                                    trx_status IN (?, ?) AND
-                                    payment_due > ? AND
-                                    user_id = ?";
-
-                $detailStmt = $this->db->query($detailsQuery, [$status['active'], $status['inactive'], $date, $userId]);
-                $classList = $this->getClassList();
-                foreach ($this->db->fetchAll($detailStmt) as $d) {
-                    $decode = json_decode($d['trx_detail'], true);
-
-                    $items = [
-                        [
-                            'amount' => (float) $monthlyFee,
-                            'item_name' => 'monthly_fee',
-                        ],
-                        [
-                            'amount' => (float) $decode['items'][1]['amount'],
-                            'item_name' => $decode['items'][1]['item_name'],
-                        ],
-                    ];
-
-                    $finalAdditionalFeesStmt = $this->db->query(
-                        "SELECT
-                                uaf.fee_id, f.name AS fee_name, uaf.amount
-                            FROM
-                                user_additional_fee uaf LEFT JOIN
-                                fee_categories f ON uaf.fee_id = f.id
-                            WHERE uaf.user_id = ? AND uaf.period = ?",
-                        [$userId, $decode['due_date']],
-                    );
-                    foreach ($this->db->fetchAll($finalAdditionalFeesStmt) as $f) {
-                        $items[0][] = [
-                            'amount' => (float) $f['amount'],
-                            'item_name' => $f['fee_name'],
-                        ];
-                    }
-
-                    $classDetail = $classList[$levelId][$gradeId][$sectionIdInput];
-                    $decode['items'] = $items;
-                    $decode['total'] = $fee_total;
-                    $decode['class'] = "$classDetail[level_name] $classDetail[grade_name] $classDetail[section_name]";
-                    $decode['virtual_account'] = $va != '' ? $va : $decode['virtual_account'];
-
-                    $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
-                    $detailsJSON = json_encode($decode, $jsonFlags);
-
-                    if ($detailsJSON === false) {
-                        throw new Exception('Failed to encode bill items to JSON. Error: ' . json_last_error_msg());
-                    }
-
-                    $query = "UPDATE bills SET trx_detail = '$detailsJSON' WHERE trx_status IN ('$status[active]', '$status[inactive]') AND MONTH(payment_due) = '$splitDate[month]' AND YEAR(payment_due) = '$splitDate[year]' AND user_id = $userId";
-                    $this->db->query($query);
-                }
-            }
-
-            if ($feeChanged) {
-                $message['data'] = [
-                    'target' => $parentPhone,
-                    'message' => "Biaya Uang Sekolah *$name* telah terubah, dimohon untuk dapat mengecek Sistem Keuangan Nusaputera",
-                    'delay' => '1',
-                ];
-                Fonnte::sendMessage($message);
-            }
-
-            $logs = [
-                'log_name' => 'UPDATE_STUDENT',
-                'description' => "User #$userId has been updated",
-            ];
-
-            $this->db->insert('logs', $logs);
+            $this->db->insert('users', $userData);
+            $this->billBE->createSingularBill($newStudentId);
 
             $this->db->commit();
-            return ApiResponse::success('Student data updated successfully.');
+
+            return ApiResponse::success(['message' => 'Siswa ' . htmlspecialchars($insertData['nama']) . ' berhasil ditambahkan.']);
         } catch (Exception $e) {
             $this->db->rollback();
-            error_log("Error updating student ID $userId: " . $e->getMessage());
-            return ApiResponse::error('Failed to update student data. ' . $e->getMessage(), 500);
+            error_log('Gagal membuat siswa: ' . $e->getMessage());
+            return ApiResponse::error('Terjadi kesalahan di server saat menyimpan data.', 500);
         }
     }
 
-    protected function studentDashboard($user_id)
+    /**
+     * Menangani upload file Excel untuk impor siswa massal.
+     */
+    public function importStudentsFromXLSX()
     {
-        $status = $this->status;
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Metode tidak diizinkan', 405);
+        }
 
-        $query = "SELECT
-                    u.nis, u.name, u.parent_phone,
-                    c.virtual_account, c.date_joined, c.monthly_fee,
-                    CONCAT(
-                        COALESCE(l.name, ''),
-                        ' ',
-                        COALESCE(g.name, ''),
-                        ' ',
-                        COALESCE(s.name, '')
-                    ) AS class_name,
-                    (
-                        SELECT
-                            DATE_FORMAT(MAX(p.trx_timestamp), '%d %M %Y')
-                        FROM
-                            payments p
-                        WHERE
-                            p.user_id = u.id
-                    ) AS last_payment,
-                    SUM(
-                        CASE
-                            WHEN b.trx_status = '$status[unpaid]'
-                            THEN b.trx_amount + b.late_fee
-                            WHEN b.trx_status = '$status[active]'
-                            THEN b.trx_amount
-                            ELSE 0
-                        END
-                    ) AS total_bills
-                  FROM
-                    users u JOIN
-                    user_class c ON c.user_id = u.id LEFT JOIN
-                    levels l ON c.level_id = l.id LEFT JOIN
-                    grades g ON c.grade_id = g.id LEFT JOIN
-                    sections s ON c.section_id = s.id LEFT JOIN
-                    bills b on u.id = b.user_id
-                  WHERE
-                    b.user_id = '$user_id' AND
-                    b.trx_status != '$status[disabled]' AND
-                    c.date_left IS NULL
-                  GROUP BY
-                    u.nis, u.name, u.parent_phone,
-                    c.virtual_account, c.date_joined, c.monthly_fee,
-                    l.name, g.name, S.name
-                  ";
-        $result = $this->db->fetchAssoc($this->db->query($query));
+        if (!isset($_FILES['student_xlsx_file']) || $_FILES['student_xlsx_file']['error'] !== UPLOAD_ERR_OK) {
+            return ApiResponse::error('Error saat upload file. Pastikan nama input adalah "student_xlsx_file".', 400);
+        }
 
-        return $result;
+        $filePath = $_FILES['student_xlsx_file']['tmp_name'];
+
+        // 1. Memuat semua data master untuk validasi
+        $jenjangData = $this->db->findAll('jenjang');
+        $tingkatData = $this->db->findAll('tingkat');
+        $kelasData = $this->db->findAll('kelas');
+
+        // Buat map untuk pencarian cepat (case-insensitive)
+        $jenjangMap = [];
+        foreach ($jenjangData as $j) {
+            $jenjangMap[strtolower($j['nama'])] = $j['id'];
+        }
+
+        $tingkatMap = [];
+        foreach ($tingkatData as $t) {
+            $tingkatMap[strtolower($t['nama'])][$t['jenjang_id']] = $t['id'];
+        }
+
+        $kelasMap = [];
+        foreach ($kelasData as $k) {
+            $kelasMap[strtolower($k['nama'])][$k['tingkat_id']] = $k['id'];
+        }
+
+        $validRows = [];
+        $errorRows = [];
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $highestRow = $sheet->getHighestDataRow();
+            $header = $sheet->rangeToArray('A1:F1', null, true, false)[0];
+
+            // 2. Loop melalui setiap baris di Excel (mulai dari baris 2)
+            for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
+                $rowData = $sheet->rangeToArray('A' . $rowNum . ':F' . $rowNum, null, true, false)[0];
+                if (empty(array_filter($rowData))) {
+                    continue;
+                }
+
+                $rowErrors = [];
+                $nis = trim($rowData[0] ?? '');
+                $nama = trim($rowData[1] ?? '');
+                $jenjangName = strtolower(trim($rowData[2] ?? ''));
+                $tingkatName = strtolower(trim($rowData[3] ?? ''));
+                $kelasName = strtolower(trim($rowData[4] ?? ''));
+                $noHpOrtu = trim($rowData[5] ?? '');
+
+                // 3. Validasi setiap kolom
+                if (empty($nis)) {
+                    $rowErrors[] = 'NIS wajib diisi.';
+                }
+                if (empty($nama)) {
+                    $rowErrors[] = 'Nama wajib diisi.';
+                }
+                if (empty($jenjangName)) {
+                    $rowErrors[] = 'Jenjang wajib diisi.';
+                }
+                if (empty($tingkatName)) {
+                    $rowErrors[] = 'Tingkat wajib diisi.';
+                }
+
+                $jenjangId = $jenjangMap[$jenjangName] ?? null;
+                if (!$jenjangId) {
+                    $rowErrors[] = "Jenjang '{$rowData[2]}' tidak ditemukan.";
+                }
+
+                $tingkatId = $jenjangId ? $tingkatMap[$tingkatName][$jenjangId] ?? null : null;
+                if (!$tingkatId) {
+                    $rowErrors[] = "Tingkat '{$rowData[3]}' tidak valid untuk Jenjang '{$rowData[2]}'.";
+                }
+
+                $kelasId = $tingkatId ? $kelasMap[$kelasName][$tingkatId] ?? null : null;
+                if ($kelasName !== '' && !$kelasId) {
+                    $rowErrors[] = "Kelas '{$rowData[4]}' tidak valid untuk Tingkat '{$rowData[3]}'.";
+                }
+
+                if (empty($rowErrors)) {
+                    $validRows[] = [
+                        'nis' => $nis,
+                        'nama' => $nama,
+                        'jenjang_id' => $jenjangId,
+                        'tingkat_id' => $tingkatId,
+                        'kelas_id' => $kelasId,
+                        'no_hp_ortu' => $noHpOrtu,
+                    ];
+                } else {
+                    $errorRows[] = array_merge($rowData, [implode('; ', $rowErrors)]);
+                }
+            }
+        } catch (Exception $e) {
+            return ApiResponse::error('Gagal membaca file Excel: ' . $e->getMessage(), 500);
+        }
+
+        // 4. Proses hasil validasi
+        if (!empty($errorRows)) {
+            // Jika ada error, buat dan kirim file Excel berisi error
+            $this->sendErrorExcel($errorRows, array_merge($header, ['Errors']));
+        }
+
+        if (empty($validRows)) {
+            return ApiResponse::error('Tidak ada data valid yang ditemukan untuk diimpor.', 400);
+        }
+
+        // 5. Simpan semua data valid ke database
+        try {
+            $this->db->beginTransaction();
+            $sppTarifCache = [];
+
+            foreach ($validRows as $row) {
+                // Ambil tarif SPP
+                $key = "{$row['jenjang_id']}-{$row['tingkat_id']}-{$row['kelas_id']}";
+                if (!isset($sppTarifCache[$key])) {
+                    $tarif = $this->classBE->getTarifSPP($row['jenjang_id'], $row['tingkat_id'], $row['kelas_id']);
+                    $sppTarifCache[$key] = $tarif['nominal'] ?? 0;
+                }
+                $spp = $sppTarifCache[$key];
+
+                // Siapkan data untuk tabel 'siswa' dan 'users'
+                $jenjang = $this->db->find('jenjang', ['id' => $row['jenjang_id']]);
+                $va = FormatHelper::formatVA($jenjang['va_code'], $row['nis']);
+
+                $studentData = [
+                    'nama' => $row['nama'],
+                    'nis' => $row['nis'],
+                    'jenjang_id' => $row['jenjang_id'],
+                    'tingkat_id' => $row['tingkat_id'],
+                    'kelas_id' => $row['kelas_id'],
+                    'va' => $va,
+                    'no_hp_ortu' => $row['no_hp_ortu'],
+                    'spp' => $spp,
+                ];
+                $newStudentId = $this->db->insert('siswa', $studentData);
+
+                if (!$newStudentId) {
+                    throw new Exception("Gagal menyimpan siswa dengan NIS {$row['nis']}");
+                }
+
+                $userData = [
+                    'username' => $va,
+                    'password' => FormatHelper::hashPassword($va),
+                    'role' => 'siswa',
+                    'siswa_id' => $newStudentId,
+                ];
+                $this->db->insert('users', $userData);
+                $this->billBE->createSingularBill($newStudentId);
+            }
+
+            $this->db->commit();
+            return ApiResponse::success(null, count($validRows) . ' siswa berhasil diimpor.');
+        } catch (Exception $e) {
+            $this->db->rollback();
+            error_log('Gagal impor massal: ' . $e->getMessage());
+            return ApiResponse::error('Terjadi kesalahan saat menyimpan data ke database. ' . $e->getMessage(), 500);
+        }
     }
 
-    protected function studentPayment($user_id)
+    /**
+     * Fungsi bantuan untuk membuat dan mengirim file Excel berisi error validasi.
+     */
+    private function sendErrorExcel(array $errorData, array $header)
     {
-        $status = $this->status;
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->fromArray([$header], null, 'A1');
+        $sheet->fromArray($errorData, null, 'A2');
 
+        foreach (range('A', $sheet->getHighestColumn()) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+        $sheet
+            ->getStyle('A1:' . $sheet->getHighestColumn() . '1')
+            ->getFont()
+            ->setBold(true);
+
+        $writer = new Xlsx($spreadsheet);
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        // Mengirim header khusus agar Axios tahu ini adalah file download error
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="import_errors.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit();
+    }
+
+    /**
+     * Membuat dan mengirimkan file template Excel untuk impor siswa.
+     */
+    public function getStudentFormatXLSX()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = ['NIS', 'Nama Lengkap', 'Jenjang', 'Tingkat', 'Kelas', 'No. HP Orang Tua'];
+        $sheet->fromArray([$headers], null, 'A1');
+
+        foreach (range('A', $sheet->getHighestColumn()) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+        $sheet
+            ->getStyle('A1:' . $sheet->getHighestColumn() . '1')
+            ->getFont()
+            ->setBold(true);
+
+        $writer = new Xlsx($spreadsheet);
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="template_import_siswa.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit();
+    }
+
+    /**
+     * Menangani update siswa massal dari file Excel.
+     * Meng-update/membuat siswa dari file, dan me-soft-delete yang tidak ada di file.
+     */
+    public function bulkUpdateStudentsFromXLSX()
+    {
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Metode tidak diizinkan', 405);
+        }
+        if (!isset($_FILES['bulk_update_xlsx_file']) || $_FILES['bulk_update_xlsx_file']['error'] !== UPLOAD_ERR_OK) {
+            return ApiResponse::error('Error saat upload file.', 400);
+        }
+
+        $filePath = $_FILES['bulk_update_xlsx_file']['tmp_name'];
+
+        // 1. Validasi file Excel (sama seperti bulk create)
+        $validationResult = $this->validateStudentExcel($filePath);
+
+        if (!empty($validationResult['errors'])) {
+            $this->sendErrorExcel($validationResult['errors'], $validationResult['header']);
+        }
+
+        $validRows = $validationResult['valid'];
+        if (empty($validRows)) {
+            return ApiResponse::error('Tidak ada data valid yang ditemukan untuk diproses.', 400);
+        }
+
+        // 2. Ambil semua NIS siswa yang aktif dari database
+        $allDbNisResult = $this->db->query('SELECT nis FROM siswa WHERE deleted_at IS NULL');
+        $allDbNis = array_column($this->db->fetchAll($allDbNisResult), 'nis');
+
+        $nisFromExcel = array_column($validRows, 'nis');
+
+        // 3. Tentukan Aksi untuk Setiap Baris (UPDATE, CREATE, DELETE)
+        $studentsToUpdate = [];
+        $studentsToCreate = [];
+        foreach ($validRows as $row) {
+            if (in_array($row['nis'], $allDbNis)) {
+                $studentsToUpdate[] = $row;
+            } else {
+                $studentsToCreate[] = $row;
+            }
+        }
+        $nisToDelete = array_diff($allDbNis, $nisFromExcel);
+
+        // 4. Proses dalam Transaksi
+        try {
+            $this->db->beginTransaction();
+
+            $sppTarifCache = [];
+
+            $mdTrx = $this->db->findAll('spp_tagihan', ['is_active' => 1]);
+            foreach($mdTrx as $trx){
+                // $this->midtrans->cancelTransaction($trx['midtrans_trx_id']);
+            }
+
+            // --- Proses CREATE ---
+            if (!empty($studentsToCreate)) {
+                foreach ($studentsToCreate as $row) {
+                    $this->createSingleStudent($row, $sppTarifCache);
+                }
+            }
+
+            // --- Proses UPDATE ---
+            if (!empty($studentsToUpdate)) {
+                foreach ($studentsToUpdate as $row) {
+                    $this->updateSingleStudent($row, $sppTarifCache);
+                }
+            }
+
+            // --- Proses DELETE (Soft Delete) ---
+            if (!empty($nisToDelete)) {
+                $placeholders = implode(',', array_fill(0, count($nisToDelete), '?'));
+                $this->db->query("UPDATE siswa SET deleted_at = NOW() WHERE nis IN ($placeholders)", $nisToDelete);
+                $this->db->query(
+                    "UPDATE
+                                    spp_tagihan t INNER JOIN
+                                    siswa s ON t.siswa_id = s.id
+                                  SET
+                                    t.is_active = 0
+                                  WHERE
+                                    s.nis IN ($placeholders)",
+                    $nisToDelete,
+                );
+                $this->db->query("UPDATE users u JOIN siswa s ON u.siswa_id = s.id SET u.password = NULL WHERE s.nis IN ($placeholders)", $nisToDelete);
+            }
+
+            $this->db->commit();
+
+            $summary = [
+                'created' => count($studentsToCreate),
+                'updated' => count($studentsToUpdate),
+                'deleted' => count($nisToDelete),
+            ];
+
+            return ApiResponse::success($summary, 'Proses update massal selesai.');
+        } catch (Exception $e) {
+            $this->db->rollback();
+            error_log('Gagal update massal: ' . $e->getMessage());
+            return ApiResponse::error('Terjadi kesalahan saat memproses data. ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Memvalidasi file Excel siswa dan mengembalikan data valid & error.
+     */
+    private function validateStudentExcel(string $filePath): array
+    {
+        $jenjangData = $this->db->findAll('jenjang');
+        $tingkatData = $this->db->findAll('tingkat');
+        $kelasData = $this->db->findAll('kelas');
+
+        $jenjangMap = [];
+        foreach ($jenjangData as $j) {
+            $jenjangMap[strtolower($j['nama'])] = $j['id'];
+        }
+        $tingkatMap = [];
+        foreach ($tingkatData as $t) {
+            $tingkatMap[strtolower($t['nama'])][$t['jenjang_id']] = $t['id'];
+        }
+        $kelasMap = [];
+        foreach ($kelasData as $k) {
+            $kelasMap[strtolower($k['nama'])][$k['tingkat_id']] = $k['id'];
+        }
+
+        $validRows = [];
+        $errorRows = [];
+        $header = [];
+
+        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+        $sheet = $spreadsheet->getActiveSheet();
+        $highestRow = $sheet->getHighestDataRow();
+        $header = $sheet->rangeToArray('A1:F1', null, true, false)[0];
+
+        for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
+            $rowData = $sheet->rangeToArray('A' . $rowNum . ':F' . $rowNum, null, true, false)[0];
+            if (empty(array_filter($rowData))) {
+                continue;
+            }
+
+            $rowErrors = [];
+            $nis = trim($rowData[0] ?? '');
+            $nama = trim($rowData[1] ?? '');
+            $jenjangName = strtolower(trim($rowData[2] ?? ''));
+            $tingkatName = strtolower(trim($rowData[3] ?? ''));
+            $kelasName = strtolower(trim($rowData[4] ?? ''));
+            $noHpOrtu = trim($rowData[5] ?? '');
+
+            if (empty($nis)) {
+                $rowErrors[] = 'NIS wajib diisi.';
+            }
+            if (empty($nama)) {
+                $rowErrors[] = 'Nama wajib diisi.';
+            }
+            if (empty($jenjangName)) {
+                $rowErrors[] = 'Jenjang wajib diisi.';
+            }
+            if (empty($tingkatName)) {
+                $rowErrors[] = 'Tingkat wajib diisi.';
+            }
+
+            $jenjangId = $jenjangMap[$jenjangName] ?? null;
+            if (!$jenjangId) {
+                $rowErrors[] = "Jenjang '{$rowData[2]}' tidak ditemukan.";
+            }
+
+            $tingkatId = $jenjangId ? $tingkatMap[$tingkatName][$jenjangId] ?? null : null;
+            if (!$tingkatId) {
+                $rowErrors[] = "Tingkat '{$rowData[3]}' tidak valid untuk Jenjang '{$rowData[2]}'.";
+            }
+
+            $kelasId = $tingkatId ? $kelasMap[$kelasName][$tingkatId] ?? null : null;
+            if ($kelasName !== '' && !$kelasId) {
+                $rowErrors[] = "Kelas '{$rowData[4]}' tidak valid untuk Tingkat '{$rowData[3]}'.";
+            }
+
+            if (empty($rowErrors)) {
+                $validRows[] = [
+                    'nis' => $nis,
+                    'nama' => $nama,
+                    'jenjang_id' => $jenjangId,
+                    'tingkat_id' => $tingkatId,
+                    'kelas_id' => $kelasId,
+                    'no_hp_ortu' => $noHpOrtu,
+                ];
+            } else {
+                $errorRows[] = array_merge($rowData, [implode('; ', $rowErrors)]);
+            }
+        }
+
+        return ['valid' => $validRows, 'errors' => $errorRows, 'header' => $header];
+    }
+
+    /**
+     * Logika untuk membuat satu siswa (dipakai oleh bulk create & update)
+     */
+    private function createSingleStudent(array $row, array &$sppTarifCache): void
+    {
+        $key = "{$row['jenjang_id']}-{$row['tingkat_id']}-{$row['kelas_id']}";
+        if (!isset($sppTarifCache[$key])) {
+            $tarif = $this->classBE->getTarifSPP($row['jenjang_id'], $row['tingkat_id'], $row['kelas_id']);
+            $sppTarifCache[$key] = $tarif['nominal'] ?? 0;
+        }
+        $spp = $sppTarifCache[$key];
+
+        $jenjang = $this->db->find('jenjang', ['id' => $row['jenjang_id']]);
+        $va = FormatHelper::formatVA($jenjang['va_code'], $row['nis']);
+
+        $studentData = [
+            'nama' => $row['nama'],
+            'nis' => $row['nis'],
+            'jenjang_id' => $row['jenjang_id'],
+            'tingkat_id' => $row['tingkat_id'],
+            'kelas_id' => $row['kelas_id'],
+            'va' => $va,
+            'no_hp_ortu' => $row['no_hp_ortu'],
+            'spp' => $spp,
+        ];
+        $newStudentId = $this->db->insert('siswa', $studentData);
+
+        if (!$newStudentId) {
+            throw new Exception("Gagal menyimpan siswa baru dengan NIS {$row['nis']}");
+        }
+
+        $userData = [
+            'username' => $va,
+            'password' => FormatHelper::hashPassword($va),
+            'role' => 'siswa',
+            'siswa_id' => $newStudentId,
+        ];
+        $this->db->insert('users', $userData);
+
+        $this->billBE->createSingularBill($newStudentId);
+    }
+
+    /**
+     * Logika untuk meng-update satu siswa (dipakai oleh bulk update)
+     */
+    private function updateSingleStudent(array $row, array &$sppTarifCache)
+    {
+        $key = "{$row['jenjang_id']}-{$row['tingkat_id']}-{$row['kelas_id']}";
+        if (!isset($sppTarifCache[$key])) {
+            $tarif = $this->classBE->getTarifSPP($row['jenjang_id'], $row['tingkat_id'], $row['kelas_id']);
+            $sppTarifCache[$key] = $tarif['nominal'] ?? 0;
+        }
+        $spp = $sppTarifCache[$key];
+
+        $jenjang = $this->db->find('jenjang', ['id' => $row['jenjang_id']]);
+        $va = FormatHelper::FormatVA($jenjang['va_code'], $row['nis']);
+
+        $studentData = [
+            'nama' => $row['nama'],
+            'jenjang_id' => $row['jenjang_id'],
+            'tingkat_id' => $row['tingkat_id'],
+            'kelas_id' => $row['kelas_id'],
+            'va' => $va,
+            'no_hp_ortu' => $row['no_hp_ortu'],
+            'spp' => $spp,
+            'updated_at' => Call::date(),
+            'deleted_at' => null,
+        ];
+
+        $this->db->update('siswa', $studentData, ['nis' => $row['nis']]);
+
+        $st = $this->db->find('siswa', ['nis' => $row['nis']]);
+
+        $this->db->update('users', ['username' => $va, 'password' => FormatHelper::hashPassword($va)], ['siswa_id' => $st['id']]);
+        $this->billBE->createSingularBill($st['id'], 'UPDATE');
+    }
+
+    /**
+     * Mengambil data siswa aktif dan mengekspornya ke file Excel.
+     */
+    public function exportStudentXLSX()
+    {
+        // 1. Definisikan header yang sama persis dengan template upload
+        $header = ['NIS', 'Nama Lengkap', 'Jenjang', 'Tingkat', 'Kelas', 'No. HP Orang Tua'];
+
+        // 2. Query untuk mengambil data siswa aktif dengan format yang sesuai
+        $query = "SELECT
+                    s.nis,
+                    s.nama,
+                    j.nama AS jenjang,
+                    t.nama AS tingkat,
+                    k.nama AS kelas,
+                    s.no_hp_ortu
+                  FROM
+                    siswa s
+                    LEFT JOIN jenjang j ON s.jenjang_id = j.id
+                    LEFT JOIN tingkat t ON s.tingkat_id = t.id
+                    LEFT JOIN kelas k ON s.kelas_id = k.id
+                  WHERE
+                    s.deleted_at IS NULL
+                  ORDER BY
+                    j.id, t.id, k.id, s.nama ASC";
+
+        $studentsResult = $this->db->query($query);
+        $studentsData = $this->db->fetchAll($studentsResult);
+
+        // 3. Buat file Excel menggunakan PhpSpreadsheet
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Tulis header
+        $sheet->fromArray([$header], null, 'A1');
+
+        // Tulis data siswa mulai dari baris 2
+        if (!empty($studentsData)) {
+            $sheet->fromArray($studentsData, null, 'A2');
+        }
+
+        // 4. Styling (opsional tapi bagus)
+        foreach (range('A', $sheet->getHighestColumn()) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+        $sheet
+            ->getStyle('A1:' . $sheet->getHighestColumn() . '1')
+            ->getFont()
+            ->setBold(true);
+
+        // 5. Kirim file ke browser untuk diunduh
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+        // Membersihkan output buffer jika ada
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        // Set header HTTP untuk download file
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="export_siswa_' . date('Y-m-d') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit();
+    }
+
+    /**
+     * Mengambil detail lengkap satu siswa berdasarkan ID untuk form edit.
+     */
+    public function getStudentDetailById($id)
+    {
+        if (empty($id) || !is_numeric($id)) {
+            return null;
+        }
+        return $this->db->find('siswa', ['id' => (int) $id]);
+    }
+
+    /**
+     * Meng-update data utama seorang siswa dari form edit.
+     */
+    public function updateStudentData($id, $data)
+    {
+        if (empty($id) || empty($data)) {
+            return ApiResponse::error('Data tidak lengkap.', 400);
+        }
+
+        $nis = trim($data['nis'] ?? '');
+        if (empty($nis)) {
+            return ApiResponse::error('NIS tidak boleh kosong.', 422);
+        }
+
+        $existingResult = $this->db->query('SELECT id FROM siswa WHERE nis = ? AND id != ?', [$nis, $id]);
+        if ($this->db->fetchAssoc($existingResult)) {
+            return ApiResponse::error("NIS '{$nis}' sudah digunakan oleh siswa lain.", 409);
+        }
+
+        $jenjang = $this->db->find('jenjang', ['id' => (int) $data['jenjang_id']]);
+        if (!$jenjang) {
+            return ApiResponse::error('Jenjang tidak valid.', 422);
+        }
+
+        $updateData = [
+            'nama' => trim($data['nama']),
+            'nis' => $nis,
+            'jenjang_id' => (int) $data['jenjang_id'],
+            'tingkat_id' => (int) $data['tingkat_id'],
+            'kelas_id' => !empty($data['kelas_id']) ? (int) $data['kelas_id'] : null,
+            'va' => FormatHelper::formatVA($jenjang['va_code'], $nis),
+            'no_hp_ortu' => $data['no_hp_ortu'] ?? null,
+            'spp' => (float) $data['spp'],
+            'updated_at' => date('Y-m-d H:i:s'),
+        ];
+
+        try {
+            $this->db->beginTransaction();
+            $this->db->update('siswa', $updateData, ['id' => (int) $id]);
+            $this->db->update('users', ['username' => $updateData['va']], ['siswa_id' => (int) $id]);
+
+            $this->db->commit();
+            return ApiResponse::success([], 'Data siswa berhasil diupdate.');
+        } catch (Exception $e) {
+            $this->db->rollback();
+            error_log("Gagal update siswa #{$id}: " . $e->getMessage());
+            return ApiResponse::error('Gagal mengupdate data siswa.', 500);
+        }
+    }
+
+    /**
+     * Mengambil daftar kategori biaya tambahan.
+     */
+    public function getFeeCategories()
+    {
+        return [['id' => 'praktek', 'nama' => 'Biaya Praktek'], ['id' => 'ekstra', 'nama' => 'Biaya Ekstrakurikuler'], ['id' => 'daycare', 'nama' => 'Biaya Daycare']];
+    }
+
+    /**
+     * Mengambil biaya tambahan yang ada untuk siswa pada periode tertentu.
+     */
+    public function getStudentFeesByPeriod($siswaId, $month, $year)
+    {
+        if (empty($siswaId) || empty($month) || empty($year)) {
+            return [];
+        }
+
+        return $this->db->findAll('spp_biaya_tambahan', [
+            'siswa_id' => (int) $siswaId,
+            'bulan' => (int) $month,
+            'tahun' => (int) $year,
+        ]);
+    }
+
+    /**
+     * Menyimpan (Create/Update/Delete) biaya tambahan untuk siswa pada periode tertentu.
+     */
+    public function updateStudentFees($siswaId)
+    {
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+
+        $fees = $data['fees'] ?? [];
+        $period = $data['period'] ?? [];
+        $month = $period['month'] ?? null;
+        $year = $period['year'] ?? null;
+
+        if (empty($siswaId) || empty($month) || empty($year)) {
+            return ApiResponse::error('Data tidak lengkap (ID Siswa atau Periode).', 400);
+        }
+
+        $trx_id = Call::uuidv4();
+
+        try {
+            $this->db->beginTransaction();
+
+            $idsFromRequest = array_filter(array_column($fees, 'id'));
+
+            $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswaId]);
+            $params = [(int) $bill['id'], (int) $month, (int) $year, ...$idsFromRequest];
+            $this->db->query("DELETE FROM spp_tagihan_detail WHERE tagihan_id = ? AND bulan = ? AND tahun = ? AND jenis NOT IN ('spp', 'late') AND lunas = 0", $params);
+
+            if (!empty($idsFromRequest)) {
+                $placeholders = implode(',', array_fill(0, count($idsFromRequest), '?'));
+                $params = [(int) $siswaId, (int) $month, (int) $year, ...$idsFromRequest];
+                $this->db->query("DELETE FROM spp_biaya_tambahan WHERE siswa_id = ? AND bulan = ? AND tahun = ? AND id NOT IN ($placeholders)", $params);
+            } else {
+                $this->db->delete('spp_biaya_tambahan', ['siswa_id' => (int) $siswaId, 'bulan' => (int) $month, 'tahun' => (int) $year]);
+            }
+
+            foreach ($fees as $fee) {
+                if (empty($fee['kategori']) || !isset($fee['nominal']) || !is_numeric($fee['nominal'])) {
+                    continue;
+                }
+
+                $feeData = [
+                    'siswa_id' => (int) $siswaId,
+                    'bulan' => (int) $month,
+                    'tahun' => (int) $year,
+                    'kategori' => $fee['kategori'],
+                    'nominal' => (float) $fee['nominal'],
+                    'keterangan' => $fee['keterangan'] ?? '',
+                ];
+
+                $this->db->insert('spp_tagihan_detail', [
+                    'tagihan_id' => $bill['id'],
+                    'jenis' => $fee['kategori'],
+                    'nominal' => (float) $fee['nominal'],
+                    'bulan' => (int) $month,
+                    'tahun' => (int) $year,
+                    'lunas' => 0,
+                ]);
+
+                if (!empty($fee['id'])) {
+                    $this->db->update('spp_biaya_tambahan', $feeData, ['id' => (int) $fee['id']]);
+                } else {
+                    $this->db->insert('spp_biaya_tambahan', $feeData);
+                }
+            }
+
+            $nominal = 0;
+            $details = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0]);
+            foreach ($details as $detail) {
+                if ($detail['jenis'] != 'late') {
+                    $nominal += $detail['nominal'];
+                }
+            }
+            $this->db->update('spp_tagihan', ['total_nominal' => $nominal, 'midtrans_trx_id' => $trx_id], ['id' => $bill['id']]);
+
+            $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
+
+            $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+            if (!$st) {
+                throw new Exception('Data siswa dengan ID ' . $bill['siswa_id'] . ' tidak ditemukan.');
+            }
+
+            $bd = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0, 'bulan' => ['<=', $bill['bulan']]]);
+            if (empty($bd)) {
+                throw new Exception('Tidak ada detail tagihan yang belum lunas untuk tagihan ID ' . $bill['id']);
+            }
+
+            $items = [];
+            $sum = 0;
+            foreach ($bd as $d) {
+                $items[] = [
+                    'id' => $d['id'],
+                    'price' => (int) $d['nominal'],
+                    'quantity' => 1,
+                    'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                ];
+                $sum += (int) $d['nominal'];
+            }
+
+            $mdResult = $this->midtrans->charge([
+                'payment_type' => 'bank_transfer',
+                'transaction_details' => [
+                    'gross_amount' => $sum,
+                    'order_id' => $trx_id,
+                ],
+                'customer_details' => [
+                    'email' => '',
+                    'first_name' => $st['nama'],
+                    'last_name' => '',
+                    'phone' => $st['no_hp_ortu'],
+                ],
+                'item_details' => $items,
+                'bank_transfer' => [
+                    'bank' => 'bni',
+                    'va_number' => $st['va'],
+                ],
+            ]);
+            if (isset($mdResult->va_numbers[0]->va_number)) {
+                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
+            } else {
+                throw new Exception('Transaksi Midtrans berhasil, namun tidak menerima VA Number.');
+            }
+
+            $this->db->commit();
+            return ApiResponse::success([], 'Biaya tambahan berhasil disimpan.');
+        } catch (Exception $e) {
+            $this->db->rollback();
+            error_log("Gagal update biaya tambahan siswa #{$siswaId}: " . $e->getMessage());
+            return ApiResponse::error('Gagal menyimpan biaya tambahan: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Menghapus (Soft Delete) Siswa
+     */
+    public function deleteStudent($siswaId)
+    {
+       try {
+            $this->db->beginTransaction();
+
+            $siswa = $this->db->find('siswa', ['id' => $siswaId]);
+
+            $update = $this->db->update(
+                'siswa',
+                [
+                    'deleted_at' => Call::date(),
+                ],
+                ['id' => $siswaId],
+            );
+
+            if (!$update) {
+                return ApiResponse::error('Tidak menemukan data siswa untuk dihapus', 400);
+            }
+
+            $bill = $this->db->update(
+                'spp_tagihan',
+                [
+                    'is_active' => 0,
+                ],
+                ['siswa_id' => $siswaId],
+            );
+
+            if (!$bill) {
+                return ApiResponse::error('Tidak menemukan data tagihan siswa untuk dihapus', 400);
+            }
+            $this->db->commit();
+            return ApiResponse::success(null, "Berhasil menonaktifkan $siswa[nama] dari sistem");
+        } catch (\Exception $e) {
+            return ApiResponse::error('Server Error: ' . $e);
+        }
+    }
+
+    public function studentPage()
+    {
+        $user = $this->db->find('users', ['id' => $_SESSION['user_id']]);
+        return [
+            'dashboard' => $this->studentDashboard($user['siswa_id']),
+            'payments' => $this->studentPayments($user['siswa_id']),
+        ];
+    }
+
+    protected function studentDashboard($id)
+    {
+        $siswa = $this->db->find('siswa', ['id' => $id]);
+        $kelas = $this->db->fetchAssoc(
+            $this->db->query(
+                "SELECT
+                j.nama as jenjang,
+                t.nama as tingkat,
+                k.nama as kelas
+             FROM
+                siswa s LEFT JOIN
+                jenjang j ON j.id = s.jenjang_id LEFT JOIN
+                tingkat t ON t.id = s.tingkat_id LEFT JOIN
+                kelas   k ON k.id = s.kelas_id
+             WHERE
+                s.id = ?
+                ",
+                [$id],
+            ),
+        );
+        $max = $this->db->fetchAssoc(
+            $this->db->query(
+                "SELECT
+                MAX(tanggal_pembayaran) as latest_payment
+             FROM
+                spp_pembayaran
+             WHERE
+                siswa_id = ?",
+                [$id],
+            ),
+        );
+        $fee = $this->db->fetchAssoc($this->db->query('SELECT SUM(td.nominal) AS total_bills FROM spp_tagihan_detail td JOIN spp_tagihan t ON t.id = td.id WHERE t.siswa_id = ? AND td.lunas = ?', [$id, false]));
+        return array_merge($siswa, $kelas, $max, $fee);
+    }
+
+    protected function studentPayments($id)
+    {
         $params = [
-            'id' => $user_id,
+            'id' => $id,
             'academic_year' => $_GET['year-filter'] ?? Call::academicYear(),
             'semester' => $_GET['semester-filter'] ?? Call::semester(),
         ];
 
         $params['semester'] = $params['semester'] == 1 || $params['semester'] == FIRST_SEMESTER ? FIRST_SEMESTER : SECOND_SEMESTER;
-
-        $paramQuery = " AND b.user_id = $params[id]";
+        $monthList = Call::monthNameSemester($params['semester']);
+        $paramQuery = " AND s.id = $params[id]";
 
         if ($params['academic_year'] != NULL_VALUE) {
             $academicYear = explode('/', $params['academic_year'], 2);
@@ -742,1015 +1073,47 @@ class StudentBE
                 'max' => "$academicYear[1]-06-30",
             ];
 
-            $paramQuery .= " AND b.payment_due BETWEEN '$years[min]' AND '$years[max]' ";
+            $paramQuery .= " AND b.jatuh_tempo BETWEEN '$years[min]' AND '$years[max]' ";
         }
+
+        $queryFilter = ['bulan' => [], 'tahun' => ''];
+
+        $tagihan = $this->db->find('spp_tagihan', ['siswa_id' => $id]);
 
         if ($params['semester'] != NULL_VALUE) {
             $year = explode('/', $params['academic_year'], 2);
 
             if ($params['semester'] == SECOND_SEMESTER) {
-                $paramQuery .= " AND YEAR(b.payment_due) = $year[1]";
+                $paramQuery .= " AND YEAR(b.jatuh_tempo) = $year[1]";
+                $queryFilter['bulan'] = [1, 2, 3, 4, 5, 6];
+                $queryFilter['tahun'] = $year[1];
             } else {
-                $paramQuery .= " AND YEAR(b.payment_due) = $year[0]";
+                $paramQuery .= " AND YEAR(b.jatuh_tempo) = $year[0]";
+                $queryFilter['bulan'] = [7, 8, 9, 10, 11, 12];
+                $queryFilter['tahun'] = $year[0];
             }
         }
 
-        $query = "SELECT
-                    DATE_FORMAT(b.payment_due, '%M %Y') AS `month`,
-                    b.trx_amount + b.late_fee AS `bills`,
-                    b.trx_status AS `trx_status`,
-                    b.trx_detail AS `detail`,
-                    p.details AS `payment_detail`,
-                    p.trx_timestamp AS `paid_at`,
-                    p.user_id AS `user_id`,
-                    p.bill_id AS `bill_id`
-                  FROM
-                    bills b LEFT JOIN
-                    payments p ON b.id = p.bill_id LEFT JOIN
-                    users u ON u.id = b.user_id LEFT JOIN
-                    user_class c ON u.id = c.user_id LEFT JOIN
-                    levels l ON c.level_id = l.id LEFT JOIN
-                    grades g ON c.grade_id = g.id LEFT JOIN
-                    sections s ON c.section_id = s.id
-                   WHERE
-                     TRUE $paramQuery
-                  ";
-        $result = $this->db->fetchAll($this->db->query($query));
-
-        foreach ($result as &$r) {
-            $r['month'] = $this->translateMonthToIndonesia($r['month']);
+        $result = [];
+        foreach ($queryFilter['bulan'] as $trx) {
+            $data = $this->db->findAll('spp_tagihan_detail', [
+                'bulan' => $trx, 
+                'tahun' => $queryFilter['tahun'], 
+                'tagihan_id' => $tagihan['id']
+            ]);
+            $sum = 0;
+            $status = 0;
+            foreach ($data as $d) {
+                $sum += $d['nominal'];
+                $status += $d['lunas'];
+            }
+            $result[] = [
+                'bulan' => "$monthList[$trx] $queryFilter[tahun]",
+                'tagihan' => $sum,
+                'status' => $status > 0,
+            ];
         }
 
         return $result;
-    }
-
-    public function studentPage()
-    {
-        $user_id = $_SESSION['user_id'];
-
-        if ($user_id == '' || !isset($user_id)) {
-            return [];
-        }
-
-        return [
-            'dashboard' => $this->studentDashboard($user_id),
-            'payments' => $this->studentPayment($user_id),
-        ];
-    }
-
-    public function getStudentDetail()
-    {
-        $id = $_GET['user_id'] ?? '';
-        if ($id == '') {
-            return ApiResponse::error('No User ID Found');
-        }
-        $query = "SELECT
-                    u.nis, u.name, COALESCE(u.dob, '') AS dob,
-                    COALESCE(u.phone, '') AS phone, COALESCE(u.email, '') AS email, u.parent_phone,
-                    COALESCE(u.address, '') AS address, COALESCE(l.name, '') AS level, COALESCE(l.id, '') AS level_id,
-                    COALESCE(g.name, '') AS grade, COALESCE(g.id, '') AS grade_id, COALESCE(s.name, '') AS section,
-                    COALESCE(s.id, '') AS section_id, c.monthly_fee
-                  FROM
-                    users u JOIN
-                    user_class c ON u.id = c.user_id LEFT JOIN
-                    levels l ON l.id = c.level_id LEFT JOIN
-                    grades g ON g.id = c.grade_id LEFT JOIN
-                    sections s ON s.id = c.section_id
-                  WHERE
-                    c.date_left IS NULL AND
-                    u.id = $id";
-
-        $result = $this->db->fetchAssoc($this->db->query($query));
-
-        return ApiResponse::success($result, 'Success Get Student');
-    }
-
-    public function getStudentFees()
-    {
-        $id = $_GET['user_id'] ?? null;
-        $year = $_GET['year'] ?? null;
-        $semester = $_GET['semester'] ?? null;
-        $month = $_GET['month'] ?? null;
-
-        if (!$id || !$year || !$semester || !$month) {
-            return ApiResponse::error('Error Missing Parameters', 400, [
-                'id' => $id,
-                'year' => $year,
-                'semester' => $semester,
-                'month' => $month,
-            ]);
-        }
-
-        $period = Call::getFirstDay([
-            'year' => $year,
-            'semester' => $semester,
-            'month' => $month,
-        ]);
-
-        $query = "SELECT
-                    f.id, f.name, uaf.amount
-                  FROM
-                    user_additional_fee uaf JOIN
-                    fee_categories f ON uaf.fee_id = f.id
-                  WHERE
-                    uaf.period = '$period' AND
-                    uaf.user_id = $id";
-
-        $result = $this->db->fetchAll($this->db->query($query));
-
-        return ApiResponse::success($result, 'Success Get Student Additional Fees');
-    }
-
-    protected function getClassList()
-    {
-        $query = "SELECT
-                    l.id AS level_id, l.name AS level_name, l.va_code AS va_prefix,
-                    g.id AS grade_id, g.level_id AS grade_level_id, g.name AS grade_name, g.base_monthly_fee AS grade_monthly, g.base_late_fee AS grade_late,
-                    s.id AS section_id, s.grade_id AS section_level_id, s.name AS section_name, s.base_monthly_fee AS section_monthly, s.base_late_fee AS section_late
-                  FROM
-                    levels l LEFT JOIN
-                    grades g ON l.id = g.level_id LEFT JOIN
-                    sections s ON g.id = s.grade_id";
-        $result = $this->db->fetchAll($this->db->query($query));
-
-        $class_list = [];
-        foreach ($result as $data) {
-            $class_list[$data['level_id']][$data['grade_id']][$data['section_id']] = [
-                'va_prefix' => $data['va_prefix'],
-                'level_name' => $data['level_name'],
-                'grade_name' => $data['grade_name'],
-                'section_name' => $data['section_name'],
-                'monthly_fee' => $data['grade_monthly'] != 0 ? $data['grade_monthly'] : $data['section_monthly'],
-                'late_fee' => $data['grade_late'] != 0 ? $data['grade_late'] : $data['section_monthly'],
-            ];
-        }
-
-        return $class_list;
-    }
-
-    protected function createStudents($data, $details)
-    {
-        try {
-            $this->db->beginTransaction();
-            $class_list = self::getClassList();
-
-            $students = !isset($data[0]) ? [$data] : $data;
-            $classes = !isset($details[0]) ? [$details] : $details;
-
-            $ids = $this->db->insert('users', $students);
-
-            
-            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-            $logName = $this->db->fetchAssoc($this->db->query($log));
-            if (!empty($logName)) {
-                [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
-                $date = "$year-$month-01";
-
-                if (in_array($month, [6, 12])) {
-                    $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-                    $logName = $this->db->fetchAssoc($this->db->query($log));
-
-                    [$title, $semester2, $year] = explode('-', $logName['log_name']);
-                    if ($semester1 != $semester2) {
-                        $date = "$year-" . ((int) $month + 1) . '-01';
-                    }
-                }
-            } else {
-                $date = Call::date();
-            }
-
-            $class_details = [];
-            foreach ($ids as $id) {
-                foreach ($classes as $class) {
-                    if ($class['nis'] == $id['nis']) {
-                        $l_id = $class['level_id'];
-                        $g_id = $class['grade_id'];
-                        $s_id = $class['section_id'];
-
-                        $va = FormatHelper::formatVA($class_list[$l_id][$g_id][$s_id ?? '']['va_prefix'], $id['nis'], $date);
-
-                        $class_details[] = [
-                            'user_id' => $id['id'],
-                            'level_id' => $l_id,
-                            'grade_id' => $g_id,
-                            'section_id' => $s_id == '' ? null : $s_id,
-                            'monthly_fee' => $class_list[$l_id][$g_id][$s_id ?? '']['monthly_fee'],
-                            'late_fee' => $class_list[$l_id][$g_id][$s_id ?? '']['late_fee'],
-                            'virtual_account' => $va,
-                            'password' => md5($va),
-                        ];
-                    }
-                }
-            }
-
-            $this->db->insert('user_class', $class_details);
-
-            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-            $logName = $this->db->fetchAssoc($this->db->query($log));
-
-            if ($logName == null) {
-                $this->db->commit();
-                return [
-                    'status' => true,
-                ];
-            }
-
-            [$title, $semester, $year, $monthInt] = explode('-', $logName['log_name']);
-
-            $months = Call::monthSemester($date);
-            $dateSplit = Call::splitDate($date);
-
-            $bills = [];
-            $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
-                'semester' => $semester,
-                'date' => $dateSplit
-            ]);
-
-            $strId = implode(',', array_column($ids, 'id'));
-
-            $addedStudentsStmt = "SELECT
-                                u.id, u.name, c.monthly_fee,
-                                c.late_fee, c.virtual_account, c.date_joined,
-                                c.date_left, l.name AS level_name,
-                                CONCAT(
-                                    COALESCE(l.name, ''),
-                                    ' ',
-                                    COALESCE(g.name, ''),
-                                    ' ',
-                                    COALESCE(s.name, '')
-                                ) AS class_name
-                              FROM
-                                users u LEFT JOIN
-                                user_class c ON u.id = c.user_id LEFT JOIN
-                                levels l ON c.level_id = l.id LEFT JOIN
-                                grades g ON c.grade_id = g.id LEFT JOIN
-                                sections s ON c.section_id = s.id
-                              WHERE
-                                u.role = ? AND
-                                c.date_left IS NULL AND
-                                u.id IN ($strId)";
-
-            $role = USER_ROLE_STUDENT;
-            $student_result = $this->db->query($addedStudentsStmt, [$role]);
-            $students = $this->db->fetchAll($student_result);
-
-            foreach ($students as $student) {
-                foreach ($months as $month) {
-                    $due_date = date(TIMESTAMP_FORMAT, strtotime("$month/10/$year 23:59:59"));
-
-                    if ($month < ((int) $monthInt) + 1) {
-                        $monthStatus = $this->status['disabled'];
-                    } elseif ($month == ((int) $monthInt) + 1) {
-                        $monthStatus = $this->status['active'];
-                    } else {
-                        $monthStatus = $this->status['inactive'];
-                    }
-
-                    $details = [
-                        'name' => $student['name'],
-                        'class' => $student['class_name'],
-                        'virtual_account' => $student['virtual_account'],
-                        'academic_year' => $academicYear,
-                        'billing_month' => "$month/{$dateSplit['year']}",
-                        'due_date' => $due_date,
-                        'payment_date' => null,
-                        'status' => $monthStatus,
-                        'items' => [
-                            [
-                                'item_name' => MONTHLY_FEE,
-                                'amount' => (int) $student['monthly_fee'],
-                            ],
-                            [
-                                'item_name' => LATE_FEE,
-                                'amount' => 0,
-                            ],
-                        ],
-                        'notes' => '',
-                        'total' => (int) $student['monthly_fee'],
-                    ];
-
-                    $bills[] = [
-                        'user_id' => $student['id'],
-                        'virtual_account' => $student['virtual_account'],
-                        'trx_id' => FormatHelper::FormatTransactionCode($student['level_name'], $student['virtual_account'], $month),
-                        'trx_amount' => (int) $student['monthly_fee'],
-                        'trx_detail' => $details,
-                        'trx_status' => $monthStatus,
-                        'late_fee' => 0,
-                        'payment_due' => $due_date,
-                    ];
-                }
-            }
-
-            $bill_result = $this->db->insert('bills', $bills);
-
-            $this->db->commit();
-            return [
-                'status' => true,
-                'details' => $bill_result,
-            ];
-        } catch (\Exception $e) {
-            return ['status' => false, 'errors' => $e];
-        }
-    }
-
-    public function formCreateStudent()
-    {
-        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
-            return ApiResponse::error('Invalid API endpoint', 404);
-        }
-
-        $rawData = file_get_contents('php://input');
-
-        $data = json_decode($rawData, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return ApiResponse::error('Invalid JSON format', 400, json_last_error());
-        }
-
-        $nis = $data['nis'] ?? null;
-        $name = $data['name'] ?? null;
-        $dob = isset($data['dob']) && $data['dob'] !== '' ? $data['dob'] : null;
-        $phone = isset($data['phone']) && $data['phone'] !== '' ? $data['phone'] : null;
-        $email = isset($data['email']) && $data['email'] !== '' ? $data['email'] : null;
-        $parent_phone = $data['parent_phone'] ?? null;
-        $address = isset($data['address']) && $data['address'] !== '' ? $data['address'] : null;
-        $level = $data['level'] ?? null;
-        $grade = $data['grade'] ?? null;
-        $section = isset($data['section']) && $data['section'] !== '' ? $data['section'] : null;
-
-        $required_fields = ['nis', 'name', 'parent_phone', 'level', 'grade'];
-        $errors = [];
-
-        foreach ($required_fields as $field) {
-            if (!isset($data[$field]) || trim($data[$field]) === '') {
-                $errors[] = "$field is required.";
-            }
-        }
-
-        if (!empty($errors)) {
-            return ApiResponse::error('Incomplete Form input', 400, $errors);
-        }
-
-        self::createStudents(
-            [
-                'nis' => $nis,
-                'name' => $name,
-                'dob' => $dob,
-                'address' => $address,
-                'phone' => $phone,
-                'email' => $email,
-                'parent_phone' => $parent_phone,
-                'role' => USER_ROLE_STUDENT,
-            ],
-            [
-                'nis' => $nis,
-                'level_id' => $level,
-                'grade_id' => $grade,
-                'section_id' => $section,
-            ],
-        );
-
-        return ApiResponse::success('Created Student Successful!');
-    }
-
-    public function importStudentsFromXLSX()
-    {
-        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
-            return ApiResponse::error('Invalid API endpoint', 405);
-        }
-
-        if (!isset($_FILES['bulk-students']) || $_FILES['bulk-students']['error'] !== UPLOAD_ERR_OK) {
-            return ApiResponse::error('File upload error occurred.', 400);
-        }
-
-        $filePath = $_FILES['bulk-students']['tmp_name'];
-        $allowedMimes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-        $fileMime = mime_content_type($filePath);
-        if (!in_array($fileMime, $allowedMimes)) {
-            return ApiResponse::error('Invalid file type. Please upload an XLSX file.', 400);
-        }
-
-        $validStudentData = [];
-        $validClassDetails = [];
-        $errorRowsData = [];
-        $processedRowCount = 0;
-        $importedRowCount = 0;
-
-        try {
-            $classList = $this->getClassList();
-            if (empty($classList)) {
-                throw new Exception('Failed to load class list for validation.');
-            }
-
-            $spreadsheet = IOFactory::load($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
-            $highestRow = $sheet->getHighestDataRow();
-            $originalHeaders = $sheet->rangeToArray('A1:J1', null, true, false, true)[1] ?? [];
-
-            for ($row = 2; $row <= $highestRow; $row++) {
-                $processedRowCount++;
-                $originalRowValues = $sheet->rangeToArray('A' . $row . ':J' . $row, null, true, false, false)[0] ?? [];
-                if (empty(array_filter($originalRowValues))) {
-                    continue;
-                }
-
-                $rowData = [];
-                $colIndex = 0;
-                foreach ($originalHeaders as $colLetter => $headerName) {
-                    $rowData[$colLetter] = $originalRowValues[$colIndex] ?? null;
-                    $colIndex++;
-                }
-
-                $rowErrors = [];
-                $nis = trim($rowData['A'] ?? '');
-                $name = trim($rowData['B'] ?? '');
-                $levelName = trim($rowData['C'] ?? '');
-                $gradeName = trim($rowData['D'] ?? '');
-                $sectionName = trim($rowData['E'] ?? '');
-                $address = trim($rowData['F'] ?? '');
-                $dobRaw = $rowData['G'] ?? null;
-                $phone = trim($rowData['H'] ?? '');
-                $email = trim($rowData['I'] ?? '');
-                $parentPhone = trim($rowData['J'] ?? '');
-
-                if ($nis === '') {
-                    $rowErrors[] = 'NIS is required.';
-                }
-                if ($name === '') {
-                    $rowErrors[] = 'Nama is required.';
-                }
-                if ($levelName === '') {
-                    $rowErrors[] = 'Jenjang is required.';
-                }
-                if ($gradeName === '') {
-                    $rowErrors[] = 'Tingkat is required.';
-                }
-                if ($parentPhone === '') {
-                    $rowErrors[] = 'Nomor Orang Tua is required.';
-                }
-
-                $levelId = null;
-                $gradeId = null;
-                $sectionId = null;
-                $foundClass = false;
-                if ($levelName !== '' && $gradeName !== '') {
-                    foreach ($classList as $l_id => $grades) {
-                        foreach ($grades as $g_id => $sections) {
-                            $currentLevelName = $sections[array_key_first($sections)]['level_name'] ?? '';
-                            $currentGradeName = $sections[array_key_first($sections)]['grade_name'] ?? '';
-
-                            if (strcasecmp($currentLevelName, $levelName) === 0 && strcasecmp($currentGradeName, $gradeName) === 0) {
-                                $foundSectionMatch = false;
-                                $trimmedSectionName = trim($sectionName ?? '');
-
-                                foreach ($sections as $s_id_key => $details) {
-                                    $currentSectionName = $details['section_name'];
-                                    if ($trimmedSectionName === '' && $currentSectionName === null) {
-                                        $levelId = $l_id;
-                                        $gradeId = $g_id;
-                                        $sectionId = null;
-                                        $foundSectionMatch = true;
-                                        break;
-                                    } elseif ($trimmedSectionName !== '' && $currentSectionName !== null && strcasecmp($currentSectionName, $trimmedSectionName) === 0) {
-                                        $levelId = $l_id;
-                                        $gradeId = $g_id;
-                                        $sectionId = $s_id_key === 'none' ? null : $s_id_key;
-                                        $foundSectionMatch = true;
-                                        break;
-                                    }
-                                }
-
-                                if ($foundSectionMatch) {
-                                    $foundClass = true;
-                                    break; // Exit inner grade loop
-                                } else {
-                                    if ($trimmedSectionName !== '') {
-                                        $rowErrors[] = "Kelas '$sectionName' not found for Tingkat '$gradeName' / Jenjang '$levelName'.";
-                                    } else {
-                                        $rowErrors[] = "No matching Kelas (including empty/no specific class) found for Tingkat '$gradeName' / Jenjang '$levelName'.";
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        if ($foundClass || !empty($rowErrors)) {
-                            break;
-                        }
-                    }
-
-                    if (!$foundClass && empty($rowErrors)) {
-                        $rowErrors[] = "Combination of Jenjang '$levelName' and Tingkat '$gradeName' not found.";
-                    }
-                }
-
-                $dobFormatted = null;
-                if (!empty($dobRaw)) {
-                    try {
-                        if (is_numeric($dobRaw)) {
-                            $dobFormatted = ExcelDate::excelToDateTimeObject($dobRaw)->format('Y-m-d');
-                        } else {
-                            $dateTime = new DateTime(str_replace('/', '-', $dobRaw));
-                            $dobFormatted = $dateTime->format('Y-m-d');
-                        }
-                    } catch (Exception $e) {
-                        $rowErrors[] = 'Tanggal Lahir invalid.';
-                    }
-                }
-
-                if (empty($rowErrors)) {
-                    $importedRowCount++;
-                    $validStudentData[] = [
-                        'nis' => $nis,
-                        'name' => $name,
-                        'dob' => $dobFormatted,
-                        'address' => $address === '' ? null : $address,
-                        'phone' => $phone === '' ? null : $phone,
-                        'email' => $email === '' ? null : $email,
-                        'parent_phone' => $parentPhone,
-                        'role' => USER_ROLE_STUDENT, // Ensure constant is defined
-                    ];
-                    $validClassDetails[] = [
-                        'nis' => $nis,
-                        'level_id' => $levelId,
-                        'grade_id' => $gradeId,
-                        'section_id' => $sectionId, // Use the found sectionId (can be null)
-                    ];
-                } else {
-                    $errorRowsData[] = [
-                        'original_data' => $originalRowValues,
-                        'errors' => implode('; ', $rowErrors),
-                    ];
-                }
-            }
-        } catch (Exception $e) {
-            error_log('Error processing XLSX file or class list: ' . $e->getMessage());
-            return ApiResponse::error('Error reading, processing the XLSX file, or loading class data.', 500);
-        }
-
-        if (!empty($errorRowsData)) {
-            $errorSpreadsheet = new Spreadsheet();
-            $errorSheet = $errorSpreadsheet->getActiveSheet();
-            $outputHeaders = array_values($originalHeaders);
-            $outputHeaders[] = 'Errors';
-            $errorSheet->fromArray([$outputHeaders], null, 'A1');
-
-            $errorRowIndex = 2;
-            foreach ($errorRowsData as $errorDetail) {
-                $outputRow = $errorDetail['original_data'];
-                $outputRow[] = $errorDetail['errors'];
-                $errorSheet->fromArray($outputRow, null, 'A' . $errorRowIndex, true);
-                $errorRowIndex++;
-            }
-
-            $highestColumn = $errorSheet->getHighestColumn();
-            foreach (range('A', $highestColumn) as $columnID) {
-                $errorSheet->getColumnDimension($columnID)->setAutoSize(true);
-            }
-            $headerStyle = [
-                'font' => ['bold' => true],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-            ];
-            $errorSheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
-
-            $writer = new Xlsx($errorSpreadsheet);
-            if (ob_get_length()) {
-                ob_end_clean();
-            }
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment; filename="import_student_errors.xlsx"');
-            header('Cache-Control: max-age=0');
-            $writer->save('php://output');
-            exit();
-        } elseif (!empty($validStudentData)) {
-            try {
-                $this->createStudents($validStudentData, $validClassDetails);
-                return ApiResponse::success("Successfully imported $importedRowCount students.");
-            } catch (Exception $e) {
-                return ApiResponse::error('Validation successful, but failed to save students to database. Error: ' . $e->getMessage(), 500);
-            }
-        } elseif ($processedRowCount > 0) {
-            return ApiResponse::success('File processed, but no valid student data found to import.', 200);
-        } else {
-            return ApiResponse::error('The uploaded file appears to be empty or has no data rows.', 400);
-        }
-    }
-
-    public function bulkUpdateStudentsFromXLSX()
-    {
-        // Cek request method
-        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
-            return ApiResponse::error('Invalid API endpoint', 405);
-        }
-
-        // Kalau error di upload file
-        if (!isset($_FILES['bulk-update-students']) || $_FILES['bulk-update-students']['error'] !== UPLOAD_ERR_OK) {
-            return ApiResponse::error('File upload error occurred.', 400);
-        }
-
-        // Cek Tipe File
-        $filePath = $_FILES['bulk-update-students']['tmp_name'];
-        $allowedMimes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-        $fileMime = mime_content_type($filePath);
-        if (!in_array($fileMime, $allowedMimes)) {
-            return ApiResponse::error('Invalid file type. Please upload an XLSX file.', 400);
-        }
-
-        $validStudentData = [];
-        $validNIS = [];
-        $validName = [];
-        $validClassDetails = [];
-        $errorRowsData = [];
-        $processedRowCount = 0;
-        $importedRowCount = 0;
-
-        // MAPPING DATA DARI XLSX KE VAR
-        try {
-            $classList = $this->getClassList();
-            if (empty($classList)) {
-                throw new Exception('Failed to load class list for validation.');
-            }
-
-            $spreadsheet = IOFactory::load($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
-            $highestRow = $sheet->getHighestDataRow();
-            $originalHeaders = $sheet->rangeToArray('A1:J1', null, true, false, true)[1] ?? [];
-
-            for ($row = 2; $row <= $highestRow; $row++) {
-                $processedRowCount++;
-                $originalRowValues = $sheet->rangeToArray('A' . $row . ':J' . $row, null, true, false, false)[0] ?? [];
-                if (empty(array_filter($originalRowValues))) {
-                    continue;
-                }
-
-                $rowData = [];
-                $colIndex = 0;
-                foreach ($originalHeaders as $colLetter => $headerName) {
-                    $rowData[$colLetter] = $originalRowValues[$colIndex] ?? null;
-                    $colIndex++;
-                }
-
-                $rowErrors = [];
-                $nis = trim($rowData['A'] ?? '');
-                $name = trim($rowData['B'] ?? '');
-                $levelName = trim($rowData['C'] ?? '');
-                $gradeName = trim($rowData['D'] ?? '');
-                $sectionName = trim($rowData['E'] ?? '');
-                $address = trim($rowData['F'] ?? '');
-                $dobRaw = $rowData['G'] ?? null;
-                $phone = trim($rowData['H'] ?? '');
-                $email = trim($rowData['I'] ?? '');
-                $parentPhone = trim($rowData['J'] ?? '');
-
-                if ($nis === '') {
-                    $rowErrors[] = 'NIS is required.';
-                }
-                if ($name === '') {
-                    $rowErrors[] = 'Nama is required.';
-                }
-                if ($levelName === '') {
-                    $rowErrors[] = 'Jenjang is required.';
-                }
-                if ($gradeName === '') {
-                    $rowErrors[] = 'Tingkat is required.';
-                }
-                if ($parentPhone === '') {
-                    $rowErrors[] = 'Nomor Orang Tua is required.';
-                }
-
-                $levelId = null;
-                $gradeId = null;
-                $sectionId = null;
-                $foundClass = false;
-                if ($levelName !== '' && $gradeName !== '') {
-                    foreach ($classList as $l_id => $grades) {
-                        foreach ($grades as $g_id => $sections) {
-                            $currentLevelName = $sections[array_key_first($sections)]['level_name'] ?? '';
-                            $currentGradeName = $sections[array_key_first($sections)]['grade_name'] ?? '';
-
-                            if (strcasecmp($currentLevelName, $levelName) === 0 && strcasecmp($currentGradeName, $gradeName) === 0) {
-                                $foundSectionMatch = false;
-                                $trimmedSectionName = trim($sectionName ?? '');
-
-                                foreach ($sections as $s_id_key => $details) {
-                                    $currentSectionName = $details['section_name'];
-                                    if ($trimmedSectionName === '' && $currentSectionName === null) {
-                                        $levelId = $l_id;
-                                        $gradeId = $g_id;
-                                        $sectionId = null;
-                                        $foundSectionMatch = true;
-                                        break;
-                                    } elseif ($trimmedSectionName !== '' && $currentSectionName !== null && strcasecmp($currentSectionName, $trimmedSectionName) === 0) {
-                                        $levelId = $l_id;
-                                        $gradeId = $g_id;
-                                        $sectionId = $s_id_key === 'none' ? null : $s_id_key;
-                                        $foundSectionMatch = true;
-                                        break;
-                                    }
-                                }
-
-                                if ($foundSectionMatch) {
-                                    $foundClass = true;
-                                    break; // Exit inner grade loop
-                                } else {
-                                    if ($trimmedSectionName !== '') {
-                                        $rowErrors[] = "Kelas '$sectionName' not found for Tingkat '$gradeName' / Jenjang '$levelName'.";
-                                    } else {
-                                        $rowErrors[] = "No matching Kelas (including empty/no specific class) found for Tingkat '$gradeName' / Jenjang '$levelName'.";
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        if ($foundClass || !empty($rowErrors)) {
-                            break;
-                        }
-                    }
-
-                    if (!$foundClass && empty($rowErrors)) {
-                        $rowErrors[] = "Combination of Jenjang '$levelName' and Tingkat '$gradeName' not found.";
-                    }
-                }
-
-                $dobFormatted = null;
-                if (!empty($dobRaw)) {
-                    try {
-                        if (is_numeric($dobRaw)) {
-                            $dobFormatted = ExcelDate::excelToDateTimeObject($dobRaw)->format('Y-m-d');
-                        } else {
-                            $dateTime = new DateTime(str_replace('/', '-', $dobRaw));
-                            $dobFormatted = $dateTime->format('Y-m-d');
-                        }
-                    } catch (Exception $e) {
-                        $rowErrors[] = 'Tanggal Lahir invalid.';
-                    }
-                }
-
-                if (empty($rowErrors)) {
-                    $importedRowCount++;
-                    $validNIS[] = $nis;
-                    $validName[] = $name;
-                    $validStudentData[] = [
-                        'nis' => $nis,
-                        'name' => $name,
-                        'dob' => $dobFormatted,
-                        'address' => $address === '' ? null : $address,
-                        'phone' => $phone === '' ? null : $phone,
-                        'email' => $email === '' ? null : $email,
-                        'parent_phone' => $parentPhone,
-                        'role' => USER_ROLE_STUDENT,
-                    ];
-                    $validClassDetails[] = [
-                        'nis' => $nis,
-                        'level_id' => $levelId,
-                        'grade_id' => $gradeId,
-                        'section_id' => $sectionId,
-                    ];
-                } else {
-                    $errorRowsData[] = [
-                        'original_data' => $originalRowValues,
-                        'errors' => implode('; ', $rowErrors),
-                    ];
-                }
-            }
-        } catch (Exception $e) {
-            error_log('Error processing XLSX file or class list: ' . $e->getMessage());
-            return ApiResponse::error('Error reading, processing the XLSX file, or loading class data.', 500);
-        }
-
-        // KALAU ADA ERROR DI DATA
-        if (!empty($errorRowsData)) {
-            $errorSpreadsheet = new Spreadsheet();
-            $errorSheet = $errorSpreadsheet->getActiveSheet();
-            $outputHeaders = array_values($originalHeaders);
-            $outputHeaders[] = 'Errors';
-            $errorSheet->fromArray([$outputHeaders], null, 'A1');
-
-            $errorRowIndex = 2;
-            foreach ($errorRowsData as $errorDetail) {
-                $outputRow = $errorDetail['original_data'];
-                $outputRow[] = $errorDetail['errors'];
-                $errorSheet->fromArray($outputRow, null, 'A' . $errorRowIndex, true);
-                $errorRowIndex++;
-            }
-
-            $highestColumn = $errorSheet->getHighestColumn();
-            foreach (range('A', $highestColumn) as $columnID) {
-                $errorSheet->getColumnDimension($columnID)->setAutoSize(true);
-            }
-            $headerStyle = [
-                'font' => ['bold' => true],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-            ];
-            $errorSheet->getStyle('A1:' . $highestColumn . '1')->applyFromArray($headerStyle);
-
-            $writer = new Xlsx($errorSpreadsheet);
-            if (ob_get_length()) {
-                ob_end_clean();
-            }
-            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            header('Content-Disposition: attachment; filename="import_student_errors.xlsx"');
-            header('Cache-Control: max-age=0');
-            $writer->save('php://output');
-            exit();
-        } elseif (!empty($validStudentData)) {
-            // KALAU DATA VALID
-            try {
-                $this->db->beginTransaction();
-                $nisPlaceholders = implode(',', array_fill(0, count($validNIS), '?'));
-                $namePlaceholders = implode(',', array_fill(0, count($validName), '?'));
-
-                // TODO: UNSET ACTIVE CLASS KE SEMUA SISWA
-
-                $unset = "UPDATE
-                            user_class c INNER JOIN
-                            users u ON u.id = c.user_id
-                          SET
-                            c.date_left = NOW()
-                          WHERE
-                            u.role = 'ST'";
-                $this->db->query($unset);
-
-                // TODO: DAPETIN ID USER YANG DIUPDATE SESUAI DENGAN NAMA DAN NIS NYA YANG DIUPDATE
-                
-                $stmt = "SELECT id, nis, name FROM users u WHERE nis IN ($nisPlaceholders) AND name IN ($namePlaceholders)";
-
-                $query = $this->db->query($stmt, array_merge($validNIS, $validName));
-                $students = $this->db->fetchAll($query);
-
-                $get_student_id = [];
-                $get_student_by_id = [];
-                $student_id = [];
-
-                // TODO: MAPPING SISWA YANG DIUPDATE
-                
-                foreach ($students as $student) {
-                    $get_student_id[$student['nis']][$student['name']] = $student['id'];
-                    $get_student_by_id[$student['id']] = [
-                        'nis' => $student['nis'],
-                        'name' => $student['name'],
-                    ];
-                    $student_id[] = $student['id'];
-                }
-
-                // TODO: MAPPING KELAS SISWA YANG DIUPDATE
-                
-                $student_new_class = [];
-                foreach ($validClassDetails as $details) {
-                    $student_new_class[$details['nis']] = [
-                        'level' => $details['level_id'],
-                        'grade' => $details['grade_id'],
-                        'section' => $details['section_id'],
-                    ];
-                }
-
-                $class_details = [];
-
-                foreach ($validStudentData as $student) {
-                    
-                    // TODO: DAPETIN DATA DARI MAPPING YANG DIBUAT
-                
-                    $studentId = $get_student_id[$student['nis']][$student['name']];
-                    $level = $student_new_class[$student['nis']]['level'];
-                    $grade = $student_new_class[$student['nis']]['grade'];
-                    $section = $student_new_class[$student['nis']]['section'];
-                                        
-                    // TODO: DAPETIN PERIODE PENGECEKAN TAGIHAN TERAKHIR
-                
-                    $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCHECK-%' ORDER BY created_at DESC LIMIT 1";
-                    $logName = $this->db->fetchAssoc($this->db->query($log));
-                    if(!empty($logName)){
-                        [$title, $semester1, $year, $month] = explode('-', $logName['log_name']);
-                        $date = "$year-$month-01";
-                        
-                        if(in_array($month, [6, 12])){
-                            $log = "SELECT log_name FROM logs WHERE log_name LIKE 'BCREATE-%' ORDER BY created_at DESC LIMIT 1";
-                            $logName = $this->db->fetchAssoc($this->db->query($log));
-                            
-                            [$title, $semester2, $year] = explode('-', $logName['log_name']);
-                            if($semester1 != $semester2){
-                                $date = "$year-".((int)$month+1)."-01";
-                            }
-                        }
-                    } else {
-                        $date = Call::date();
-                    }
-
-                    $va = FormatHelper::formatVA($classList[$level][$grade][$section ?? '']['va_prefix'], $student['nis'], $date);
-                    $class_details[] = [
-                        'user_id' => $studentId,
-                        'level_id' => $level,
-                        'grade_id' => $grade,
-                        'section_id' => $section,
-                        'monthly_fee' => $classList[$level][$grade][$section ?? '']['monthly_fee'],
-                        'late_fee' => $classList[$level][$grade][$section ?? '']['late_fee'],
-                        'virtual_account' => $va,
-                        'password' => md5($va),
-                    ];
-                    $get_student_by_id[$studentId]['virtual_account'] = $va;
-                }
-
-                $this->db->insert('user_class', $class_details);
-
-                // TODO: UPDATE SISWA
-
-                $date = Call::splitDate();
-                $status = $this->status;
-                $idPlaceholders = implode(',', array_fill(0, count($student_id), '?'));
-
-                $bindValues = array_merge($student_id, [$status['active'], $status['inactive']]);
-                $billStmt = $this->db->query(
-                                "SELECT
-                                    id, user_id, trx_detail, payment_due
-                                FROM bills
-                                WHERE
-                                    user_id IN ($idPlaceholders) AND
-                                    trx_status IN (?, ?)",
-                                $bindValues,
-                            );
-                $bills = $this->db->fetchAll($billStmt);
-                    
-                // TODO: UPDATING TAGIHAN ACTIVE DAN INACTIVE
-                
-                foreach ($bills as $bill) {
-                    $detail = json_decode($bill['trx_detail'], true);
-                    $day = Call::splitDate($bill['payment_due']);
-                    $year = $day['year'];
-                    $month = $day['month'];
-                    $date = $day['day'];
-                    $semester = Call::semester("$year-$month-$date");
-                    $academicYear = Call::academicYear(ACADEMIC_YEAR_EIGHT_SLASH_FORMAT, [
-                        'semester' => $semester,
-                        'date' => $day,
-                    ]);
-                    $periodDate = Call::getFirstDay(['year' => $academicYear, 'semester' => $semester == FIRST_SEMESTER ? 1 : 2, 'month' => $month]);
-
-                    $user = $get_student_by_id[$bill['user_id']];
-                    $class = $student_new_class[$user['nis']];
-
-                    $class_meta = $classList[$class['level']][$class['grade']][$class['section'] ?? ''];
-                    $class_name = $class_meta['level_name'] . ' ' . $class_meta['grade_name'] . ' ' . $class_meta['section_name'];
-                    $items = [
-                        [
-                            'amount' => (float) $class_meta['monthly_fee'],
-                            'item_name' => 'monthly_fee',
-                        ],
-                        [
-                            'amount' => (float) $detail['items'][1]['amount'],
-                            'item_name' => $detail['items'][1]['item_name'],
-                        ],
-                    ];
-
-                    $fee_total = $class_meta['monthly_fee'] + $detail['items'][1]['amount'];
-
-                    $finalAdditionalFeesStmt = $this->db->query(
-                        "SELECT
-                            uaf.fee_id, f.name AS fee_name, uaf.amount
-                        FROM
-                            user_additional_fee uaf LEFT JOIN
-                            fee_categories f ON uaf.fee_id = f.id
-                        WHERE uaf.user_id = ? AND uaf.period = ?",
-                        [$bill['user_id'], $periodDate],
-                    );
-
-                    foreach ($this->db->fetchAll($finalAdditionalFeesStmt) as $f) {
-                        $items[] = [
-                            'amount' => (float) $f['amount'],
-                            'item_name' => $f['fee_name'],
-                        ];
-
-                        $fee_total += (float) $f['amount'];
-                    }
-
-                    $detail['items'] = $items;
-                    $detail['total'] = $fee_total;
-                    $detail['virtual_account'] = $user['virtual_account'];
-                    $detail['class'] = $class_name;
-
-                    $jsonFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
-                    $detailsJSON = json_encode($detail, $jsonFlags);
-
-                    $query = "UPDATE
-                                bills
-                              SET
-                                trx_detail = '$detailsJSON',
-                                trx_amount = '$fee_total'
-                              WHERE
-                                trx_status IN ('$status[active]', '$status[inactive]') AND
-                                id = $bill[id]";
-
-                    $this->db->query($query);
-                }
-                $this->db->commit();
-
-                return ApiResponse::success("Successfully updated $importedRowCount students.");
-            } catch (Exception $e) {
-                return ApiResponse::error('Validation successful, but failed to save students to database. Error: ' . $e->getMessage(), 500);
-            }
-        } elseif ($processedRowCount > 0) {
-            return ApiResponse::success('File processed, but no valid student data found to import.', 200);
-        } else {
-            return ApiResponse::error('The uploaded file appears to be empty or has no data rows.', 400);
-        }
     }
 }

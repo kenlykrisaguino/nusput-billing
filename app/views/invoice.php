@@ -3,19 +3,25 @@
 use App\Helpers\ApiResponse;
 use App\Helpers\FormatHelper;
 
-$details = $this->paymentBE->getPublicInvoice($segments);
+$currentUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http");
+$currentUrl .= "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+
+$path = parse_url($currentUrl, PHP_URL_PATH);
+
+$segments = explode('/', trim($path, '/'));
+
+$details = $app->PaymentBE()->getPublicInvoice($segments);
 if (!$details['status']) {
-    echo $details['error'];
+    echo $details['details'];
     exit;
 }
-$invoice = json_decode($details['details']['details'], true);
-if (json_last_error() !== JSON_ERROR_NONE) {
-    echo "Failed to parse payment details JSON";
-    exit;
-}
+
 array_shift($segments);
 $code = implode('/', $segments);
 $url = $_SERVER['HTTP_HOST'];
+
+$meta = $details['meta'];
+$details = $details['details'];
 ?>
 
 <!DOCTYPE html>
@@ -26,7 +32,7 @@ $url = $_SERVER['HTTP_HOST'];
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="/assets/img/nusaputera.png" type="image/x-icon">
     <link rel="manifest" href="/manifest.json">
-    <title>Invoice <?= $invoice['name'] . ' - ' . $invoice['class'] ?></title>
+    <title>Invoice <?= $meta['nama'] . ' - ' . $meta['kelas'] ?></title>
     <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
 </head>
 
@@ -41,7 +47,7 @@ $url = $_SERVER['HTTP_HOST'];
                 </div>
                 <div class="font-semibold text-right text-slate-400">
                     <p class="text-xs">Tanggal Pembayaran Masuk Sistem</p>
-                    <p class="text-sm"><?= htmlspecialchars($invoice['confirmation_date']) ?></p>
+                    <p class="text-sm"><?= htmlspecialchars($meta['date'] ?? '') ?></p>
                 </div>
             </div>
             <div class="mb-4">
@@ -49,15 +55,15 @@ $url = $_SERVER['HTTP_HOST'];
                     <tbody>
                         <tr>
                             <td class="pr-4">Nama</td>
-                            <td class="pr-4">: <?= $invoice['name'] ?></td>
+                            <td class="pr-4">: <?= $meta['nama'] ?></td>
                         </tr>
                         <tr>
                             <td class="pr-4">Kelas</td>
-                            <td class="pr-4">: <?= $invoice['class'] ?></td>
+                            <td class="pr-4">: <?= $meta['kelas'] ?></td>
                         </tr>
                         <tr>
                             <td class="pr-4">Virtual Account</td>
-                            <td class="pr-4">: <?= $invoice['virtual_account'] ?></td>
+                            <td class="pr-4">: <?= $meta['va'] ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -79,13 +85,13 @@ $url = $_SERVER['HTTP_HOST'];
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach($invoice['items'] as $item):?>
+                        <?php foreach($details as $item):?>
                         <tr class="bg-white border-b border-slate-200">
                             <?php 
-                            $item_name = htmlspecialchars($item['item_name']);
-                            if($item_name == "monthly_fee"){
+                            $item_name = htmlspecialchars($item['jenis']);
+                            if($item_name == "spp"){
                                 $item_name = "Tagihan Bulanan";
-                            } else if($item_name == "late_fee"){
+                            } else if($item_name == "late"){
                                 $item_name = "Biaya Keterlambatan";
                             }
                             ?>
@@ -93,10 +99,10 @@ $url = $_SERVER['HTTP_HOST'];
                                 <?= $item_name ?>
                             </th>
                             <td class="px-6 py-4 text-center">
-                                <?= htmlspecialchars($item['billing_month']) ?>
+                                <?= htmlspecialchars($item['bulan'] . "/" . $item['tahun']) ?>
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <?= FormatHelper::formatRupiah(htmlspecialchars($item['amount'])) ?>
+                                <?= FormatHelper::formatRupiah(htmlspecialchars($item['nominal'])) ?>
                             </td>
                         </tr>
                         <?php endforeach?>
@@ -107,7 +113,7 @@ $url = $_SERVER['HTTP_HOST'];
                             Total Pembayaran
                         </th>
                         <th scope="col" class="px-6 py-3 text-md text-slate-700 bg-slate-50 text-right">
-                            <?= FormatHelper::formatRupiah(htmlspecialchars($invoice['total_payment']))  ?>
+                            <?= FormatHelper::formatRupiah(htmlspecialchars($meta['total']))  ?>
                         </th>
                     </tfoot>
                 </table>
@@ -116,6 +122,7 @@ $url = $_SERVER['HTTP_HOST'];
             </div>
         </div>
     </div>
+
 </body>
 
 </html>
