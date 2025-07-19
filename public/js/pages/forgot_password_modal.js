@@ -36,14 +36,14 @@ document.addEventListener("DOMContentLoaded", () => {
     switch (currentStep) {
       case 1:
         initialStepDiv.style.display = "block";
-        modalSubmitButton.textContent = "Kirim OTP";
+        modalSubmitButton.textContent = "Kirim";
         virtualAccountInput.readOnly = false;
         break;
       case 2:
         initialStepDiv.style.display = "block";
         virtualAccountInput.readOnly = true;
         otpVerificationDiv.style.display = "block";
-        modalSubmitButton.textContent = "Verifikasi OTP";
+        modalSubmitButton.textContent = "Verifikasi";
         break;
       case 3:
         passwordInput1Div.style.display = "block";
