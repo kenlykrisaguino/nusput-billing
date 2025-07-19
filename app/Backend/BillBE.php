@@ -55,10 +55,23 @@ class BillBE
                     kelas k ON s.kelas_id = k.id LEFT JOIN
                     spp_tagihan tg ON s.id = tg.siswa_id
                  WHERE " . implode(' AND ', $params);
+        $data = $this->db->fetchAll($this->db->query($stmt, $filterData));
+        $sum = [
+            'monthly' => 0,
+            'late' => 0,
+            'total' => 0
+        ];
+
+        foreach($data as $fee){
+            $sum['monthly'] += $fee['total_nominal'];
+            $sum['late'] += $fee['denda'];
+            $sum['total'] += $fee['total_nominal'] + $fee['denda'];
+        }
 
         return [
-            'data' => $this->db->fetchAll($this->db->query($stmt, $filterData)),
-            'year' => $_GET['filter-tahun'] ?? Call::year(),
+            'data'  => $data,
+            'year'  => $_GET['filter-tahun'] ?? Call::year(),
+            'total' => $sum
         ];
     }
 
