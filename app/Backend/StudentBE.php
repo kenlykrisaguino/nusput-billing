@@ -863,7 +863,7 @@ class StudentBE
             $idsFromRequest = array_filter(array_column($fees, 'id'));
 
             $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswaId]);
-            $params = [(int) $bill['id'], (int) $month, (int) $year, ...$idsFromRequest];
+            $params = [(int) $bill['id'], (int) $month, (int) $year];
             $this->db->query("DELETE FROM spp_tagihan_detail WHERE tagihan_id = ? AND bulan = ? AND tahun = ? AND jenis NOT IN ('spp', 'late') AND lunas = 0", $params);
 
             if (!empty($idsFromRequest)) {
@@ -904,8 +904,11 @@ class StudentBE
                 }
             }
 
+            // Get Max Month and Year
+            $tahun = $this->db->fetchAssoc($this->db->query("SELECT MAX(tahun) AS tahun FROM spp_tagihan"))['tahun'];
+            $bulan = $this->db->fetchAssoc($this->db->query("SELECT MAX(bulan) AS bulan FROM spp_tagihan WHERE tahun = ?", [$tahun]))['bulan'];
             $nominal = 0;
-            $details = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0]);
+            $details = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0, 'tahun' => $tahun, 'bulan' => ['<=', $bulan]]);
             foreach ($details as $detail) {
                 if ($detail['jenis'] != 'late') {
                     $nominal += $detail['nominal'];
