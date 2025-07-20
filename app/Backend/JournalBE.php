@@ -310,7 +310,7 @@ class JournalBE
         return $result;
     }
 
-    public function getJournals($level = 4, $for_akt = true, $for_export = false, $bulan = NULL_VALUE)
+    public function getJournals($level = NULL_VALUE, $for_akt = false, $for_export = false, $bulan = NULL_VALUE)
     {
         $journalDate = Call::splitDate(); 
 
