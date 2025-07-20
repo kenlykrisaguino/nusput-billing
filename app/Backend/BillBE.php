@@ -263,6 +263,20 @@ class BillBE
                 $trx_id = Call::uuidv4();
                 $countTotal = 0;
 
+                // Cek Biaya Tambahan di bulan ini
+                $billDetails = $this->db->findAll('spp_tagihan_detail',[
+                    'tagihan_id' => $bill['id'],
+                    'bulan' => $bill['bulan'],
+                    'tahun' => $bill['tahun']
+                ]);
+
+                $totalAdditional = 0;
+                foreach($billDetails as $detail) {
+                    if(!in_array($detail['jenis'], ['spp', 'late'])) {
+                        $totalAdditional += $detail['nominal'];
+                    }
+                }
+
                 if ($status == 'lunas') {
                     $this->db->update(
                         'spp_tagihan',
@@ -271,7 +285,7 @@ class BillBE
                             'bulan' => $latest['bulan'] + 1,
                             'tahun' => $bill['tahun'],
                             'jatuh_tempo' => $bill['tahun'] . '-01-10',
-                            'total_nominal' => $student['spp'],
+                            'total_nominal' => $student['spp'] + $totalAdditional,
                             'count_denda' => 0,
                             'denda' => 0,
                             'status' => 'belum_lunas',
@@ -368,9 +382,15 @@ class BillBE
                             spp_tagihan b JOIN
                             spp_tagihan_detail bd ON b.id = bd.tagihan_id
                          WHERE
-                            b.siswa_id = $student[id] AND bd.lunas = 0";
+                            b.siswa_id = ? AND bd.lunas = ? AND bd.bulan <= ? AND bd.tahun <=  ?";
 
-                $bd = $this->db->fetchAll($this->db->query($stmt));
+
+                $bd = $this->db->fetchAll($this->db->query($stmt, [
+                    $student['id'],
+                    0,
+                    $latest['bulan'] + 1,
+                    $latest['tahun']
+                ]));
 
                 $items = [];
                 $countBelumLunas = 0;
@@ -558,7 +578,7 @@ class BillBE
         ];
 
         foreach ($levels as $level) {
-            $journals = $this->journal->getJournals($level['id'], true, false, $month - 1);
+            $journals = $this->journal->getJournals($level['id'], true);
             if (in_array($level['nama'], $smk1)) {
                 if (!isset($journalData['SMK1'])) {
                     $journalData['SMK1'] = [
@@ -808,6 +828,7 @@ class BillBE
         $data = [];
         $total = 0;
         $id = 0;
+        $maxLen = 0;
         foreach ($dataSiswa as $siswa) {
             $additionalFee = [
                 'praktek' => 0,
@@ -870,9 +891,17 @@ class BillBE
                 }
             }
             array_push($data[$id], FormatHelper::formatRupiah($bill['total_nominal'] + $bill['denda']), '', FormatHelper::formatRupiah($bill['total_nominal'] + $bill['denda']));
-
+            $total += $bill['total_nominal'] + $bill['denda'];
+            $len = count($data[$id]);
+            $maxLen = $len > $maxLen ? $len : $maxLen;
             $id++;
         }
+
+        $emptyData = [];
+        for($lenCount = 0; $lenCount < $maxLen - 2; $lenCount++){
+            $emptyData[] = '';
+        }
+        array_push($data, $emptyData, ['Total Keseluruhan', FormatHelper::formatRupiah($total)]);
         $spreadsheet = $this->getBillFormat($max);
         $sheet = $spreadsheet->getActiveSheet();
         $writer = new Xlsx($spreadsheet);
