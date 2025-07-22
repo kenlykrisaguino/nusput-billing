@@ -55,10 +55,23 @@ class BillBE
                     kelas k ON s.kelas_id = k.id LEFT JOIN
                     spp_tagihan tg ON s.id = tg.siswa_id
                  WHERE " . implode(' AND ', $params);
+        $data = $this->db->fetchAll($this->db->query($stmt, $filterData));
+        $sum = [
+            'monthly' => 0,
+            'late' => 0,
+            'total' => 0
+        ];
+
+        foreach($data as $fee){
+            $sum['monthly'] += $fee['total_nominal'];
+            $sum['late'] += $fee['denda'];
+            $sum['total'] += $fee['total_nominal'] + $fee['denda'];
+        }
 
         return [
-            'data' => $this->db->fetchAll($this->db->query($stmt, $filterData)),
-            'year' => $_GET['filter-tahun'] ?? Call::year(),
+            'data'  => $data,
+            'year'  => $_GET['filter-tahun'] ?? Call::year(),
+            'total' => $sum
         ];
     }
 
@@ -250,6 +263,21 @@ class BillBE
                 $trx_id = Call::uuidv4();
                 $countTotal = 0;
 
+                // Cek Biaya Tambahan di bulan ini
+                $billDetails = $this->db->findAll('spp_tagihan_detail',[
+                    'tagihan_id' => $bill['id'],
+                    'bulan' => $bill['bulan'],
+                    'tahun' => $bill['tahun'],
+                    'lunas' => false
+                ]);
+
+                $totalAdditional = 0;
+                foreach($billDetails as $detail) {
+                    if(!in_array($detail['jenis'], ['spp', 'late'])) {
+                        $totalAdditional += $detail['nominal'];
+                    }
+                }
+
                 if ($status == 'lunas') {
                     $this->db->update(
                         'spp_tagihan',
@@ -258,7 +286,7 @@ class BillBE
                             'bulan' => $latest['bulan'] + 1,
                             'tahun' => $bill['tahun'],
                             'jatuh_tempo' => $bill['tahun'] . '-01-10',
-                            'total_nominal' => $student['spp'],
+                            'total_nominal' => $student['spp'] + $totalAdditional,
                             'count_denda' => 0,
                             'denda' => 0,
                             'status' => 'belum_lunas',
@@ -355,9 +383,15 @@ class BillBE
                             spp_tagihan b JOIN
                             spp_tagihan_detail bd ON b.id = bd.tagihan_id
                          WHERE
-                            b.siswa_id = $student[id] AND bd.lunas = 0";
+                            b.siswa_id = ? AND bd.lunas = ? AND bd.bulan <= ? AND bd.tahun <=  ?";
 
-                $bd = $this->db->fetchAll($this->db->query($stmt));
+
+                $bd = $this->db->fetchAll($this->db->query($stmt, [
+                    $student['id'],
+                    0,
+                    $latest['bulan'] + 1,
+                    $latest['tahun']
+                ]));
 
                 $items = [];
                 $countBelumLunas = 0;
@@ -795,6 +829,7 @@ class BillBE
         $data = [];
         $total = 0;
         $id = 0;
+        $maxLen = 0;
         foreach ($dataSiswa as $siswa) {
             $additionalFee = [
                 'praktek' => 0,
@@ -846,8 +881,13 @@ class BillBE
 
             for ($i = 0; $i <= $max; $i++) {
                 if ($setCount > 0) {
-                    $periode = $bill['tahun'] . '/' . $bill['bulan'] - $i;
-                    $amount = 0;
+                    if($bill['bulan'] - $i < 0){
+                        $periode = '';
+                        $amount = '';
+                    } else {
+                        $periode = $bill['tahun'] . '/' . $bill['bulan'] - $i;
+                        $amount = 0;
+                    }
                     foreach($fee[$bill['tahun']][$bill['bulan'] - $i] as $a){
                         $amount += $a;
                     }
@@ -857,9 +897,17 @@ class BillBE
                 }
             }
             array_push($data[$id], FormatHelper::formatRupiah($bill['total_nominal'] + $bill['denda']), '', FormatHelper::formatRupiah($bill['total_nominal'] + $bill['denda']));
-
+            $total += $bill['total_nominal'] + $bill['denda'];
+            $len = count($data[$id]);
+            $maxLen = $len > $maxLen ? $len : $maxLen;
             $id++;
         }
+
+        $emptyData = [];
+        for($lenCount = 0; $lenCount < $maxLen - 2; $lenCount++){
+            $emptyData[] = '';
+        }
+        array_push($data, $emptyData, ['Total Keseluruhan', FormatHelper::formatRupiah($total)]);
         $spreadsheet = $this->getBillFormat($max);
         $sheet = $spreadsheet->getActiveSheet();
         $writer = new Xlsx($spreadsheet);

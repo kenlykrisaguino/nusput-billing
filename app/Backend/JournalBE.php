@@ -18,21 +18,12 @@ class JournalBE
 {
     private $db;
 
-    private $status = [
-        'paid' => BILL_STATUS_PAID,
-        'unpaid' => BILL_STATUS_UNPAID,
-        'late' => BILL_STATUS_LATE,
-        'inactive' => BILL_STATUS_INACTIVE,
-        'active' => BILL_STATUS_ACTIVE,
-        'disabled' => BILL_STATUS_DISABLED,
-    ];
-
     public function __construct($database)
     {
         $this->db = $database;
     }
 
-    protected function schoolFeesIssuance($params = [])
+    protected function schoolFeesIssuance(bool $for_akt, $params = [])
     {
         $q = ["u.deleted_at IS NULL"];
         $p = [];
@@ -66,10 +57,27 @@ class JournalBE
             $endDate = new DateTime($endDateStr);
             $end_plus_one_month = $endDate->format('Y-m-d');
 
+            $bulanAwal = $startDate->format('m');
+            $tahunAwal = $startDate->format('Y');
+            $bulanAkhir = $endDate->format('m');
+            $tahunAkhir = $endDate->format('Y');
+
+            if($for_akt){
+                $q[] = "d.bulan >= ?";
+                $p[] = $bulanAwal;
+                $q[] = "d.tahun >= ?";
+                $p[] = $tahunAwal;
+
+                $q[] = "d.bulan <= ?";
+                $p[] = $bulanAkhir;
+                $q[] = "d.tahun <= ?";
+                $p[] = $tahunAkhir;
+            }
             $q[] = "b.jatuh_tempo >= ?";
             $p[] = $start_plus_one_month;
             $q[] = "b.jatuh_tempo <= ?";
             $p[] = $end_plus_one_month;
+
         }
 
         $query = "SELECT
@@ -86,6 +94,7 @@ class JournalBE
             tingkat t on u.tingkat_id = t.id LEFT JOIN
             kelas k on u.kelas_id = k.id
         WHERE " . implode(" AND ", $q);
+
 
         $result = $this->db->fetchAssoc($this->db->query($query, $p));
 
@@ -155,7 +164,7 @@ class JournalBE
         return $result;
     }
 
-    protected function getLateFee($params = [])
+    protected function getLateFee(bool $for_akt, $params = [])
     {
         $q = ["u.deleted_at IS NULL"];
         $p = [];
@@ -214,7 +223,7 @@ class JournalBE
 
         return $result;
     }
-    protected function getPaidLateFee($params = [])
+    protected function getPaidLateFee(bool $for_akt, $params = [])
     {
         $paramQuery = NULL_VALUE;
 
@@ -291,7 +300,7 @@ class JournalBE
             'section' => $_GET['filter-kelas'] ?? NULL_VALUE,
         ];
 
-        if (!empty($params['month'])) {
+        if ($params['month'] != NULL_VALUE) {
             $start = new DateTime("$year-$params[month]-01");
             $end = clone $start;
             $end->modify('last day of this month');
@@ -322,10 +331,10 @@ class JournalBE
         // get journals
         $params = array_merge($params, $dateFilter);
         $journal_details = [
-            'piutang' => $this->schoolFeesIssuance($params)['result'],
+            'piutang' => $this->schoolFeesIssuance($for_akt, $params)['result'],
             'pelunasan' => $this->schoolFeeSettlement($for_akt, $params)['result'],
-            'hutang' => $this->getLateFee($params)['result'],
-            'hutang_terbayar' => $this->getPaidLateFee($params)['result'],
+            'hutang' => $this->getLateFee($for_akt, $params)['result'],
+            'hutang_terbayar' => $this->getPaidLateFee($for_akt, $params)['result'],
         ];
 
         if ($for_export) {
@@ -417,6 +426,13 @@ class JournalBE
         }
         $tahun = $filter['year'] ?? '-';
         $class_list = [];
+        $studentName = "";
+
+        if($filter['siswa'] != NULL_VALUE){
+            $studentName = $this->db->find('siswa', [
+                'id' => $filter['siswa']
+            ])['nama'];
+        }
 
         $query = "SELECT
                     tf.jenjang_id AS level_id, tf.tingkat_id AS grade_id, tf.kelas_id AS section_id,
@@ -459,7 +475,7 @@ class JournalBE
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;
 
-        $sheet->mergeCells('A' . $currentRow . ':E' . $currentRow)->setCellValue('A' . $currentRow, $filter['search'] ?? '-');
+        $sheet->mergeCells('A' . $currentRow . ':E' . $currentRow)->setCellValue('A' . $currentRow, $studentName ?? '-');
         $sheet->getStyle('A' . $currentRow . ':E' . $currentRow)->applyFromArray($cellStyleArray);
         $sheet->getRowDimension($currentRow)->setRowHeight($rowHeightHeaderTables);
         $currentRow++;

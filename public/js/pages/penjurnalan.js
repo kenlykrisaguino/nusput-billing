@@ -80,6 +80,18 @@
    * Menjalankan semua inisialisasi setelah halaman selesai dimuat.
    */
   document.addEventListener("DOMContentLoaded", () => {
+    const updateExportLinks = () => {
+      const exportLinks = document.querySelectorAll(".export-journal-link");
+      const currentQueryString = window.location.search; // Contoh: "?filter-tahun=2023"
+
+      exportLinks.forEach((link) => {
+        const baseHref = link.href.split("?")[0];
+        link.href = `${baseHref}${currentQueryString}`;
+      });
+    };
+
+    updateExportLinks();
+
     const filterModal = document.getElementById(EL_IDS.FILTER_MODAL);
     if (!filterModal) return;
 

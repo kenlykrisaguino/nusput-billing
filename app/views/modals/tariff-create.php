@@ -56,7 +56,7 @@
                     </div>
                 </div>
                 <div>
-                    <label for="tariff_year" class="block text-sm font-medium text-gray-700 mb-1">Nominal Tarif SPP</label>
+                    <label for="tariff_year" class="block text-sm font-medium text-gray-700 mb-1">Tahun</label>
                     <div class="relative mt-1">
                         <input type="number" id="tariff_year" x-model.number="formData.tahun" required placeholder="2025" type="number"
                                class="block w-full rounded-md border-gray-300 px-3 py-2 shadow-sm sm:text-sm focus:border-sky-500 focus:ring-sky-500">

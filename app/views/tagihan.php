@@ -95,7 +95,32 @@
         }">
         <div class="px-6 md:px-10 py-6 flex-1">
             <div class="w-full flex gap-4 flex-col">
+                <?php
+                use App\Helpers\ApiResponse;
+                use App\Helpers\Call;
+                use App\Helpers\FormatHelper;
+                $billRecaps = $app->BillBE()->getBills() ?? ['data' => [], 'year' => [], 'total' => [
+                    'monthly' => 0,
+                    'late' => 0,
+                    'total' => 0
+                ]];
+                $total = $billRecaps['total'];
+                ?>
                 <section id="bills">
+                    <div class="mb-4 flex flex-col sm:flex-row justify-between items-center w-full gap-4">
+                        <div class="bg-white rounded-lg p-4 shadow flex-1 w-full">
+                            <h4 class="text-xs text-gray-700 uppercase">Tagihan SPP Bulanan</h4>
+                            <p class="text-green-700 font-semibold"><?= FormatHelper::formatRupiah($total['monthly']); ?></p>
+                        </div>
+                        <div class="bg-white rounded-lg p-4 shadow flex-1 w-full">
+                            <h4 class="text-xs text-gray-700 uppercase">Total Denda</h4>
+                            <p class="text-red-700 font-semibold"><?= FormatHelper::formatRupiah($total['late']); ?></p>
+                        </div>
+                        <div class="bg-white rounded-lg p-4 shadow flex-1 w-full">
+                            <h4 class="text-xs text-gray-700 uppercase">Total Tagihan</h4>
+                            <p class="text-blue-700 font-semibold"><?= FormatHelper::formatRupiah($total['total']); ?></p>
+                        </div>
+                    </div>
                     <div class="flex justify-between items-center">
                         <h3 class="font-semibold text-xl text-slate-700">Bill Management</h3>
                         <div class="flex items-center gap-2">
@@ -107,11 +132,7 @@
                         </div>
                     </div>
                     <div class="bg-white p-4 rounded-lg mt-4 relative overflow-x-auto shadow">
-                        <?php
-                            use App\Helpers\Call;
-                            use App\Helpers\FormatHelper;
-                            $billRecaps = $app->BillBE()->getBills() ?? ['data' => [], 'months' => []];
-                        ?>
+
                         <table id="bill-table" class="w-full text-sm text-left text-gray-700">
                             <thead class="text-xs text-gray-700 uppercase bg-gray-100">
                                 <tr>
@@ -135,68 +156,68 @@
                             <tbody>
 
                                 <?php if (count($billRecaps['data']) > 0) : ?>
-                                    <?php foreach($billRecaps['data'] as $recap) :?>
-                                    <tr class="border-b hover:bg-gray-50">
-                                        <th scope="row"
-                                            class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">
-                                            <?= htmlspecialchars($recap['nama'] ?? '') ?>
-                                            <div class="text-xs text-blue-500 font-normal">
-                                                <?= htmlspecialchars($recap['virtual_account'] ?? '') ?>
-                                            </div>
-                                        </th>
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            <?= htmlspecialchars($recap['va_midtrans'] ?? '-') ?>
-                                        </td>
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            <?= htmlspecialchars($recap['jenjang'] ?? '') ?>
-                                            <?= htmlspecialchars($recap['tingkat'] ?? '') ?>
-                                            <?= htmlspecialchars($recap['kelas'] ?? '') ?>
-                                        </td>
-                                        <td class="px-4 py-2 whitespace-nowrap font-medium text-green-700">
-                                            <?= FormatHelper::formatRupiah($recap['total_nominal'] + $recap['denda'] ?? 0) ?>
-                                        </td>
-                                        <td class="px-4 py-2 whitespace-nowrap font-semibold text-red-600">
-                                            <?= FormatHelper::formatRupiah($recap['denda'] ?? 0) ?>
-                                        </td>
-                                        <!-- Kolom data bulan dinamis -->
-                                        <?php for ($month = 1; $month <= 12; $month++): ?>
-                                        <?php
-                                        $bill = $app->BillBE()->getMonthBill($month, $billRecaps['year'], $recap['id']);
-                                        $bgColor = '';
-                                        $textColor = '';
-                                        $isSameYear = Call::year() == $billRecaps['year'];
-
-                                        if ($recap['bulan'] == $month && $isSameYear) {
-                                            $bgColor = 'bg-sky-100';
-                                            if ($recap['status'] === 'lunas') {
-                                                $textColor = 'text-green-600';
-                                                $bgColor = 'bg-green-100';
-                                            } else {
-                                                $textColor = 'text-blue-600';
-                                            }
-                                        } elseif ($recap['bulan'] > $month && $isSameYear) {
-                                            $colors = $app->BillBE()->checkSingularBillStatus($recap['id'], $month, $billRecaps['year']);
-                                            $bgColor = $colors['bg'];
-                                            $textColor = $colors['text'];
+                                <?php foreach($billRecaps['data'] as $recap) :?>
+                                <tr class="border-b hover:bg-gray-50">
+                                    <th scope="row"
+                                        class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">
+                                        <?= htmlspecialchars($recap['nama'] ?? '') ?>
+                                        <div class="text-xs text-blue-500 font-normal">
+                                            <?= htmlspecialchars($recap['virtual_account'] ?? '') ?>
+                                        </div>
+                                    </th>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($recap['va_midtrans'] ?? '-') ?>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        <?= htmlspecialchars($recap['jenjang'] ?? '') ?>
+                                        <?= htmlspecialchars($recap['tingkat'] ?? '') ?>
+                                        <?= htmlspecialchars($recap['kelas'] ?? '') ?>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap font-medium text-green-700">
+                                        <?= FormatHelper::formatRupiah($recap['total_nominal'] + $recap['denda'] ?? 0) ?>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap font-semibold text-red-600">
+                                        <?= FormatHelper::formatRupiah($recap['denda'] ?? 0) ?>
+                                    </td>
+                                    <!-- Kolom data bulan dinamis -->
+                                    <?php for ($month = 1; $month <= 12; $month++): ?>
+                                    <?php
+                                    $bill = $app->BillBE()->getMonthBill($month, $billRecaps['year'], $recap['id']);
+                                    $bgColor = '';
+                                    $textColor = '';
+                                    $isSameYear = Call::year() == $billRecaps['year'];
+                                    
+                                    if ($recap['bulan'] == $month && $isSameYear) {
+                                        $bgColor = 'bg-sky-100';
+                                        if ($recap['status'] === 'lunas') {
+                                            $textColor = 'text-green-600';
+                                            $bgColor = 'bg-green-100';
                                         } else {
-                                            $textColor = 'text-slate-300';
+                                            $textColor = 'text-blue-600';
                                         }
-                                        ?>
-                                        <td
-                                        onclick="pages.tagihan.openBillDetails('<?= htmlspecialchars($recap['id']) ?>', '<?= htmlspecialchars($month) ?>', '<?= htmlspecialchars($recap['tahun']) ?>')"
+                                    } elseif ($recap['bulan'] > $month && $isSameYear) {
+                                        $colors = $app->BillBE()->checkSingularBillStatus($recap['id'], $month, $billRecaps['year']);
+                                        $bgColor = $colors['bg'];
+                                        $textColor = $colors['text'];
+                                    } else {
+                                        $textColor = 'text-slate-300';
+                                    }
+                                    ?>
+                                    <td onclick="pages.tagihan.openBillDetails('<?= htmlspecialchars($recap['id']) ?>', '<?= htmlspecialchars($month) ?>', '<?= htmlspecialchars($recap['tahun']) ?>')"
                                         class="px-4 py-2 text-center whitespace-nowrap <?= $bgColor ?> cursor-pointer hover:bg-blue-100 transition-colors">
-                                            <span class="whitespace-nowrap <?= $textColor ?>"> <?= FormatHelper::formatRupiah($bill['sum']) ?></span>
-                                        </td>
-                                        <?php endfor; ?>
-                                    </tr>
-                                    <?php endforeach;?>
+                                        <span class="whitespace-nowrap <?= $textColor ?>">
+                                            <?= FormatHelper::formatRupiah($bill['sum']) ?></span>
+                                    </td>
+                                    <?php endfor; ?>
+                                </tr>
+                                <?php endforeach;?>
                                 <?php else:?>
                                 <tr>
                                     <td colspan="16" class="px-4 py-2 text-center text-gray-500">
                                         Tidak ada data tagihan ditemukan.</td>
                                 </tr>
                                 <?php endif;?>
-                                
+
                             </tbody>
                         </table>
                     </div>

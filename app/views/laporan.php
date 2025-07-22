@@ -62,7 +62,7 @@
                 </div>
                 <a href="/exports/journals"
                     :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
-                    class="flex block gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    class="export-journal-link flex block gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
                     :title="(sidebarOpen || isMobile) ? '' : 'Notify Open Bills'"><i
                         class="ti ti-file-export text-lg"></i><span x-show="sidebarOpen || isMobile"
                         :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
@@ -89,7 +89,7 @@
                                 <i class="ti ti-filter text-xl"></i>
                             </button>
                             <a href="/exports/journals"
-                                class="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
+                                class="export-journal-link px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
                                 <i class="ti ti-file-export"></i>
                                 Export Jurnal
                             </a>

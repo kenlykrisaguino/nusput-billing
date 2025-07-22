@@ -577,11 +577,14 @@ class PaymentBE
 
             if (!empty($invoiceItems)) {
                 foreach ($invoiceItems as $item) {
-                    // Gunakan nama kolom aktual dari tabel `spp_tagihan_detail`
-                    // Asumsi: 'nama_pembayaran', 'periode', 'jumlah'
-                    $itemName = htmlspecialchars($item['nama_pembayaran'] ?? 'Item tidak diketahui');
-                    $billingPeriod = htmlspecialchars($item['periode'] ?? '-'); // Ganti 'periode' jika nama kolomnya berbeda
-                    $itemAmount = isset($item['jumlah']) ? FormatHelper::formatRupiah((float) $item['jumlah']) : 'Rp 0';
+                    $itemName = htmlspecialchars($item['jenis'] ?? 'Item tidak diketahui');
+                    if($itemName == "spp"){
+                        $itemName = "Tagihan Bulanan";
+                    } else if($itemName == "late"){
+                        $itemName = "Biaya Keterlambatan";
+                    }
+                    $billingPeriod = htmlspecialchars(($item['bulan'] . "/" . $item['tahun'])  ?? '-');
+                    $itemAmount = FormatHelper::formatRupiah(htmlspecialchars($item['nominal']));
 
                     $html .= <<<HTML
                             <tr>
