@@ -96,6 +96,16 @@ CREATE TABLE `spp_pembayaran_tagihan` (
   `jumlah` decimal(15,2)
 );
 
+CREATE TABLE `spp_request_keringanan` (
+  `id` int PRIMARY KEY AUTO_INCREMENT,
+  `siswa_id` int,
+  `nominal` decimal(15,2),
+  `bulan` int,
+  `tahun` int,
+  `keterangan` varchar(255),
+  `created_at` timestamp
+);
+
 CREATE TABLE `users` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `username` varchar(255) UNIQUE,
@@ -121,6 +131,7 @@ ALTER TABLE `spp_tagihan_detail` ADD FOREIGN KEY (`tagihan_id`) REFERENCES `spp_
 ALTER TABLE `spp_tagihan_detail` ADD FOREIGN KEY (`pembayaran_id`) REFERENCES `spp_pembayaran` (`id`);
 ALTER TABLE `spp_pembayaran_tagihan` ADD FOREIGN KEY (`pembayaran_id`) REFERENCES `spp_pembayaran` (`id`);
 ALTER TABLE `spp_pembayaran_tagihan` ADD FOREIGN KEY (`tagihan_id`) REFERENCES `spp_tagihan` (`id`);
+ALTER TABLE `spp_request_keringanan` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
 ALTER TABLE `users` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
 
 INSERT INTO `jenjang` (`nama`, `va_code`) VALUES
@@ -177,4 +188,4 @@ INSERT INTO siswa(nama, nis, jenjang_id, tingkat_id, kelas_id, va, no_hp_ortu, s
 INSERT INTO users(username, password, role, siswa_id) VALUES
 ('admin', '$2y$10$CxW7bEYbDatjnTXSmquLteJ9Qd3npCFreytyp9ZNfRhtA\/o.tuvHe', 'admin', null),
 ('subadmin', '$2y$10$CxW7bEYbDatjnTXSmquLteJ9Qd3npCFreytyp9ZNfRhtA\/o.tuvHe', 'admin', null),
-('9881105624255048', '$2y$10$tBqwLms6EBjFlkiBvbSnxej2qJVLuqjy.d1snhZyLxnWpys39cvim', 'siswa', 1);
+('9881105625265048', '$2y$10$o6y7nmEXEtuOAuMIJBcg6.pAykyzfZCwq3Vz6yS2VBiHkQ8ZrOjnG', 'siswa', 1);
