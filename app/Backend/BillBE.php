@@ -267,7 +267,8 @@ class BillBE
                 $billDetails = $this->db->findAll('spp_tagihan_detail',[
                     'tagihan_id' => $bill['id'],
                     'bulan' => $bill['bulan'],
-                    'tahun' => $bill['tahun']
+                    'tahun' => $bill['tahun'],
+                    'lunas' => false
                 ]);
 
                 $totalAdditional = 0;
@@ -880,8 +881,13 @@ class BillBE
 
             for ($i = 0; $i <= $max; $i++) {
                 if ($setCount > 0) {
-                    $periode = $bill['tahun'] . '/' . $bill['bulan'] - $i;
-                    $amount = 0;
+                    if($bill['bulan'] - $i < 0){
+                        $periode = '';
+                        $amount = '';
+                    } else {
+                        $periode = $bill['tahun'] . '/' . $bill['bulan'] - $i;
+                        $amount = 0;
+                    }
                     foreach($fee[$bill['tahun']][$bill['bulan'] - $i] as $a){
                         $amount += $a;
                     }

@@ -1053,7 +1053,7 @@ class StudentBE
                 [$id],
             ),
         );
-        $fee = $this->db->fetchAssoc($this->db->query('SELECT SUM(td.nominal) AS total_bills FROM spp_tagihan_detail td JOIN spp_tagihan t ON t.id = td.id WHERE t.siswa_id = ? AND td.lunas = ?', [$id, false]));
+        $fee = $this->db->fetchAssoc($this->db->query("SELECT (total_nominal + denda) AS total_bills FROM spp_tagihan WHERE siswa_id = ?", [$id]));
         return array_merge($siswa, $kelas, $max, $fee);
     }
 
