@@ -1236,6 +1236,7 @@ class StudentBE
         // 5. Simpan semua data valid ke database
         try {
             $this->db->beginTransaction();
+            $trx_id = Call::uuidv4();
 
             foreach ($validRows as $row) {
                 // dapatkan data siswa
@@ -1266,13 +1267,62 @@ class StudentBE
                         'tahun' => $row['tahun']
                     ]);
                 } else {
+                    $total = $row['nominal'] + $detail['nominal'];
                     $this->db->update('spp_tagihan_detail', [
-                        'nominal' => $row['nominal'] + $detail['nominal']
+                        'nominal' => $total 
                     ], ['id' => $detail['id']]); 
                 }
 
                 if($row['bulan'] == $bill['bulan'] && $row['tahun'] == $bill['tahun']){
-                    $this->db->update('spp_tagihan', ['total_nominal'=>$bill['total_nominal']+$row['nominal']], ['id' => $bill['id']]);
+                    $this->db->update('spp_tagihan', ['total_nominal'=>$bill['total_nominal']+$row['nominal'], 'midtrans_trx_id' => $trx_id], ['id' => $bill['id']]);
+
+                    $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
+
+                    $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
+                    if (!$st) {
+                        throw new Exception('Data siswa dengan ID ' . $bill['siswa_id'] . ' tidak ditemukan.');
+                    }
+
+                    $bd = $this->db->findAll('spp_tagihan_detail', ['tagihan_id' => $bill['id'], 'lunas' => 0, 'bulan' => ['<=', $bill['bulan']]]);
+                    if (empty($bd)) {
+                        throw new Exception('Tidak ada detail tagihan yang belum lunas untuk tagihan ID ' . $bill['id']);
+                    }
+
+                    $items = [];
+                    $sum = 0;
+                    foreach ($bd as $d) {
+                        $items[] = [
+                            'id' => $d['id'],
+                            'price' => (int) $d['nominal'],
+                            'quantity' => 1,
+                            'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
+                        ];
+                        $sum += (int) $d['nominal'];
+                    }
+
+                    $mdResult = $this->midtrans->charge([
+                        'payment_type' => 'bank_transfer',
+                        'transaction_details' => [
+                            'gross_amount' => $sum,
+                            'order_id' => $trx_id,
+                        ],
+                        'customer_details' => [
+                            'email' => '',
+                            'first_name' => $st['nama'],
+                            'last_name' => '',
+                            'phone' => $st['no_hp_ortu'],
+                        ],
+                        'item_details' => $items,
+                        'bank_transfer' => [
+                            'bank' => 'bni',
+                            'va_number' => $st['va'],
+                        ],
+                    ]);
+                    if (isset($mdResult->va_numbers[0]->va_number)) {
+                        $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
+                    } else {
+                        throw new Exception('Transaksi Midtrans berhasil, namun tidak menerima VA Number.');
+                    }
                 }
             }
 
