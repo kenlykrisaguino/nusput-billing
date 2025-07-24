@@ -26,10 +26,10 @@ class ReductionBE
                     t.nama as tingkat, k.nama as kelas, r.bulan,
                     r.tahun, r.nominal, r.created_at
                  FROM
-                    spp_request_keringanan r JOIN
-                    siswa s ON s.id = r.siswa_id JOIN
-                    jenjang j ON j.id = s.jenjang_id JOIN
-                    tingkat t ON t.id = s.tingkat_id JOIN
+                    spp_request_keringanan r LEFT JOIN
+                    siswa s ON s.id = r.siswa_id LEFT JOIN
+                    jenjang j ON j.id = s.jenjang_id LEFT JOIN
+                    tingkat t ON t.id = s.tingkat_id LEFT JOIN
                     kelas k ON k.id = s.kelas_id
                     ";
         $data = $this->db->fetchAll($this->db->query($stmt));
