@@ -89,6 +89,7 @@ class Router
         switch ($type){
             case 'student': $this->app->StudentBE()->getStudentFormatXLSX(); break;
             case 'payment': $this->app->PaymentBE()->getPaymentFormatXLSX(); break;
+            case 'additional-fee': $this->app->StudentBE()->getAdditionalFeeFormatXLSX(); break;
         }
         $this->back();
     }

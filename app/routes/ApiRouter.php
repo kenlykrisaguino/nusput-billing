@@ -190,6 +190,9 @@ class ApiRouter
             case 'reduction':
                 $reductionBE->create($segments);
                 break;
+            case 'import-fee':
+                $studentBE->importAdditionalFeeFromXLSX($segments);
+                break;
             default:
                 ApiResponse::error('Invalid API endpoint', 404);
                 break;

@@ -1119,4 +1119,169 @@ class StudentBE
 
         return $result;
     }
+
+        /**
+     * Membuat dan mengirimkan file template Excel untuk impor biaya tambahan.
+     */
+    public function getAdditionalFeeFormatXLSX()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = ['VA', 'Jenis (praktek,ekstra,daycare)', 'Bulan', 'Tahun', 'Nominal'];
+        $sheet->fromArray([$headers], null, 'A1');
+
+        foreach (range('A', $sheet->getHighestColumn()) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+        $sheet
+            ->getStyle('A1:' . $sheet->getHighestColumn() . '1')
+            ->getFont()
+            ->setBold(true);
+
+        $writer = new Xlsx($spreadsheet);
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="template_import_biaya_tambahan.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit();
+    }
+
+        /**
+     * Menangani upload file Excel untuk impor siswa massal.
+     */
+    public function importAdditionalFeeFromXLSX()
+    {
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Metode tidak diizinkan', 405);
+        }
+
+        if (!isset($_FILES['import-fee']) || $_FILES['import-fee']['error'] !== UPLOAD_ERR_OK) {
+            return ApiResponse::error('Error saat upload file. Pastikan nama input adalah "import-fee".', 400);
+        }
+
+        $filePath = $_FILES['import-fee']['tmp_name'];
+
+        $validRows = [];
+        $errorRows = [];
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $highestRow = $sheet->getHighestDataRow();
+            $header = $sheet->rangeToArray('A1:E1', null, true, false)[0];
+
+            // 2. Loop melalui setiap baris di Excel (mulai dari baris 2)
+            for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
+                $rowData = $sheet->rangeToArray('A' . $rowNum . ':F' . $rowNum, null, true, false)[0];
+                if (empty(array_filter($rowData))) {
+                    continue;
+                }
+
+                $rowErrors = [];
+                $va = trim($rowData[0] ?? '');
+                $jenis = strtolower(trim($rowData[1] ?? ''));
+                $bulan = trim($rowData[2] ?? '');
+                $tahun = trim($rowData[3] ?? '');
+                $nominal = trim($rowData[4] ?? '');
+
+                // 3. Validasi setiap kolom
+                if (empty($va)) {
+                    $rowErrors[] = 'VA wajib diisi.';
+                }
+                if (empty($jenis)) {
+                    $rowErrors[] = 'Jenis wajib diisi.';
+                }
+                if (empty($bulan)) {
+                    $rowErrors[] = 'Bulan wajib diisi.';
+                }
+                if (empty($tahun)) {
+                    $rowErrors[] = 'Tahun wajib diisi.';
+                }
+                if (empty($nominal)) {
+                    $rowErrors[] = 'Nominal wajib diisi.';
+                }
+
+                if (empty($rowErrors)) {
+                    $validRows[] = [
+                        'va' => $va,
+                        'jenis' => $jenis,
+                        'bulan' => $bulan,
+                        'tahun' => $tahun,
+                        'nominal' => $nominal,
+                    ];
+                } else {
+                    $errorRows[] = array_merge($rowData, [implode('; ', $rowErrors)]);
+                }
+            }
+        } catch (Exception $e) {
+            return ApiResponse::error('Gagal membaca file Excel: ' . $e->getMessage(), 500);
+        }
+
+        // 4. Proses hasil validasi
+        if (!empty($errorRows)) {
+            // Jika ada error, buat dan kirim file Excel berisi error
+            $this->sendErrorExcel($errorRows, array_merge($header, ['Errors']));
+        }
+
+        if (empty($validRows)) {
+            return ApiResponse::error('Tidak ada data valid yang ditemukan untuk diimpor.', 400);
+        }
+
+        // 5. Simpan semua data valid ke database
+        try {
+            $this->db->beginTransaction();
+
+            foreach ($validRows as $row) {
+                // dapatkan data siswa
+                $siswa = $this->db->find('siswa', ['va' => $row['va']]);
+
+                if(!isset($siswa)){
+                    continue;
+                }
+
+                $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswa['id']]);
+                
+                if(!isset($bill)){
+                    continue;
+                }
+
+                $detail = $this->db->find('spp_tagihan_detail', [
+                    'jenis'=> $row['jenis'],
+                    'bulan' => $row['bulan'],
+                    'tahun' => $row['tahun']
+                ]);
+
+                if(!isset($detail)){
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $bill['id'],
+                        'jenis' => $row['jenis'],
+                        'nominal' => $row['nominal'],
+                        'bulan' => $row['bulan'],
+                        'tahun' => $row['tahun']
+                    ]);
+                } else {
+                    $this->db->update('spp_tagihan_detail', [
+                        'nominal' => $row['nominal'] + $detail['nominal']
+                    ], ['id' => $detail['id']]); 
+                }
+
+                if($row['bulan'] == $bill['bulan'] && $row['tahun'] == $bill['tahun']){
+                    $this->db->update('spp_tagihan', ['total_nominal'=>$bill['total_nominal']+$row['nominal']], ['id' => $bill['id']]);
+                }
+            }
+
+            $this->db->commit();
+            return ApiResponse::success(null, count($validRows) . ' siswa berhasil diimpor.');
+        } catch (Exception $e) {
+            $this->db->rollback();
+            error_log('Gagal impor massal: ' . $e->getMessage());
+            return ApiResponse::error('Terjadi kesalahan saat menyimpan data ke database. ' . $e->getMessage(), 500);
+        }
+    }
 }

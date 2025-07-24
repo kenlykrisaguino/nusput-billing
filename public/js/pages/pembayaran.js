@@ -109,7 +109,6 @@
   }
 
   async function notifyOpenBills() {
-    console.log("A")
     try {
       const response = await api.get("/notify-bills?type=1"); 
       showToast(
