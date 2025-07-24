@@ -11,6 +11,7 @@ class Call
     }
     public static function timestamp()
     {
+        date_default_timezone_set('Asia/Jakarta');
         return date(TIMESTAMP_FORMAT);
     }
     public static function date($date = null)

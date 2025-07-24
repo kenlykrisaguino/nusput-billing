@@ -29,11 +29,9 @@
                     <label class="block text-sm font-medium text-gray-700">SPP</label>
                     <div class="mt-1 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-500" x-text="formatRupiah(fees.spp)"></div>
                 </div>
-
                 <div>
-                    <label for="denda" class="block text-sm font-medium text-gray-700">Denda</label>
-                    <input type="number" id="denda" x-model.number="fees.denda"
-                           class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
+                    <label class="block text-sm font-medium text-gray-700">Denda</label>
+                    <div class="mt-1 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-500" x-text="formatRupiah(fees.denda)"></div>
                 </div>
 
                 <div class="pt-2">
@@ -56,13 +54,7 @@
         <div x-show="!isLoading" class="pt-6 mt-6 flex justify-end gap-3 border-t">
             <button type="button" @click="closeModal()"
                     class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium">
-                Batal
-            </button>
-            <button type="button" @click="saveFees()" :disabled="isSaving"
-                    class="px-6 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-colors text-sm font-medium flex items-center gap-2 disabled:bg-sky-400 disabled:cursor-not-allowed">
-                <i class="ti ti-device-floppy" x-show="!isSaving"></i>
-                <i class="ti ti-loader animate-spin" x-show="isSaving"></i>
-                <span x-text="isSaving ? 'Menyimpan...' : 'Simpan Perubahan'"></span>
+                Tutup
             </button>
         </div>
     </div>

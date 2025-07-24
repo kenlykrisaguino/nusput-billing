@@ -22,6 +22,7 @@ class ApiRouter
         $classBE = $this->app->ClassBE();
         $filterBE = $this->app->FilterBE();
         $journalBE = $this->app->JournalBE();
+        $reductionBE = $this->app->ReductionBE();
 
         $endpoint = array_shift($segments) ?? null;
 
@@ -185,6 +186,9 @@ class ApiRouter
                 break;
             case 'update-password':
                 $authBE->updatePassword($segments);
+                break;
+            case 'reduction':
+                $reductionBE->create($segments);
                 break;
             default:
                 ApiResponse::error('Invalid API endpoint', 404);

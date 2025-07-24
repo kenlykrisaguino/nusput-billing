@@ -2,6 +2,7 @@
 
 namespace App\Database;
 
+use App\Helpers\ApiResponse;
 use Exception;
 use mysqli;
 use mysqli_result;

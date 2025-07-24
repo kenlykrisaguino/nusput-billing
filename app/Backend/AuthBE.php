@@ -14,7 +14,7 @@ class AuthBE
     private $db;
 
     private $accessRules = [
-        USER_ROLE_ADMIN => ['dashboard', 'students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'laporan'],
+        USER_ROLE_ADMIN => ['dashboard', 'students', 'pembayaran', 'tagihan', 'rekap', 'penjurnalan', 'laporan', 'keringanan'],
         USER_ROLE_STUDENT => ['student-recap', 'update-password'],
     ];
 

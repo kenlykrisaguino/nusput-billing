@@ -69,6 +69,7 @@
                 <a href="/students" class="block text-gray-700 hover:text-sky-600 transition-colors">Siswa</a>
                 <a href="/pembayaran" class="block text-gray-700 hover:text-sky-600 transition-colors">Pembayaran</a>
                 <a href="/tagihan" class="block text-gray-700 hover:text-sky-600 transition-colors">Tagihan</a>
+                <a href="/keringanan" class="block text-gray-700 hover:text-sky-600 transition-colors">Keringanan</a>
                 <a href="/laporan" class="block text-gray-700 hover:text-sky-600 transition-colors">Laporan</a>
                 <a href="/route-to-akt"
                     class="block font-sm px-3 py-1.5 text-sky-500 border-2 border-sky-600 rounded-md hover:border-sky-800 hover:text-sky-800 transition-all">Sistem Akutansi</a>

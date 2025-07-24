@@ -21,6 +21,7 @@ use App\Backend\FilterBE;
 use App\Backend\RecapBE;
 use App\Backend\JournalBE;
 use App\Backend\DashboardBE;
+use App\Backend\ReductionBE;
 
 class App
 {
@@ -38,6 +39,7 @@ class App
     private $filterBE = null;
     private $recapBE = null;
     private $journalBE = null;
+    private $reductionBE = null;
     private $dashboardBE = null;
     private $apiResponse = null;
     private $formatHelper = null;
@@ -152,6 +154,12 @@ class App
             $this->dashboardBE = new DashboardBE($this->database);
         }
         return $this->dashboardBE;
+    }
+    public function ReductionBE() {
+        if ($this->reductionBE === null) {
+            $this->reductionBE = new ReductionBE($this->database, $this->midtrans);
+        }
+        return $this->reductionBE;
     }
 
     // --- HELPER GETTERS ---
