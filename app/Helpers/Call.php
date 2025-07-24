@@ -9,6 +9,10 @@ class Call
     {
         return 10000;
     }
+    public static function adminVA()
+    {
+        return 2000;
+    }
     public static function timestamp()
     {
         date_default_timezone_set('Asia/Jakarta');

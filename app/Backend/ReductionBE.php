@@ -4,6 +4,7 @@ namespace App\Backend;
 
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
+use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
 use App\Midtrans\Midtrans;
 use Exception;
@@ -70,6 +71,8 @@ class ReductionBE
         // Find Bill
         $bill = $this->db->find('spp_tagihan', ['siswa_id' => $siswa['id']]);
 
+        $billAwal = $bill['total_nominal'];
+
         // Find Bill Details
         $lateBill = $this->db->find('spp_tagihan_detail', [
             'tagihan_id' => $bill['id'],
@@ -94,9 +97,29 @@ class ReductionBE
             'jenis' => 'admin'
         ]);
 
+        if(!isset($adminBill)){
+            $this->db->insert('spp_tagihan_detail', [
+                'tagihan_id' => $bill['id'],
+                'bulan' => $data['bulan'],
+                'tahun' => $data['tahun'],
+                'jenis' => 'admin',
+                'nominal' => Call::adminVA()
+            ]);
+        }
+
         try {
             $this->db->beginTransaction();
             $trx_id = Call::uuidv4();
+
+                
+            $this->db->update('spp_tagihan_detail', [
+                'nominal' => $adminBill['nominal'] + Call::adminVA()
+            ], [
+                'tagihan_id' => $bill['id'],
+                'bulan' => $data['bulan'],
+                'tahun' => $data['tahun'],
+                'jenis' => 'admin'
+            ]);
 
             $this->db->update(
                 'spp_tagihan_detail',
@@ -104,15 +127,6 @@ class ReductionBE
                 ['id' => $lateBill['id']],
             );
 
-            $dendaFinal = $bill['denda'] - $data['nominal'];
-            $this->db->update(
-                'spp_tagihan',
-                [
-                    'denda' => (int)$dendaFinal,
-                    'midtrans_trx_id' => $trx_id,
-                ],
-                ['id' => $bill['id']],
-            );
             $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
 
             $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
@@ -137,6 +151,17 @@ class ReductionBE
                 ];
                 $sum += (int)$d['nominal'];
             }
+
+            $dendaFinal = $bill['denda'] - $data['nominal'];
+            $this->db->update(
+                'spp_tagihan',
+                [
+                    'denda' => (int)$dendaFinal,
+                    'total_nominal' => (int)$sum,
+                    'midtrans_trx_id' => $trx_id,
+                ],
+                ['id' => $bill['id']],
+            );
 
             $mdResult = $this->midtrans->charge([
                 'payment_type' => 'bank_transfer',
@@ -186,6 +211,22 @@ class ReductionBE
             $url = "$base_url/page/transaksi/backend/create.php";
 
             $bulanStr = FormatHelper::formatMonthNameInBahasa((int)$data['bulan']);
+
+            $message = "Pengajuan Peringanan Denda SPP Periode $data[bulan] $data[tahun] telah disetujui.
+            
+            SPP Awal: ". FormatHelper::formatRupiah($billAwal) ."
+            Peringanan: - ". FormatHelper::formatRupiah($data['nominal']) ."
+            Admin: +". FormatHelper::formatRupiah(Call::adminVA()) ."
+            Total Akhir: ". FormatHelper::formatRupiah($sum);
+
+            $msgLists[] = [
+                'target' => $siswa['no_hp_ortu'],
+                'message' => $message,
+                'delay' => '1',
+            ];
+            $messages = json_encode($msgLists);
+            $fonnte = Fonnte::sendMessage(['data' => $messages]);
+
             $kodeTrx = $data['nominal'] >= 0 ? 'PHPD' : 'PNBD';
             // PNBD
             $postValue[] = [

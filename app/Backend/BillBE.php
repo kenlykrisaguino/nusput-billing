@@ -144,6 +144,14 @@ class BillBE
                         'tahun' => $bill['tahun'] + 1,
                     ]);
 
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $billId,
+                        'jenis' => 'admin',
+                        'nominal' => 0,
+                        'bulan' => 1,
+                        'tahun' => $bill['tahun'] + 1,
+                    ]);
+
                     $count = $this->countSPPRenewal($billId, $bill['bulan'], $bill['tahun']);
                     $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
 
@@ -178,6 +186,14 @@ class BillBE
                         'tagihan_id' => $billId,
                         'jenis' => 'spp',
                         'nominal' => $student['spp'],
+                        'bulan' => 1,
+                        'tahun' => $year,
+                    ]);
+
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $billId,
+                        'jenis' => 'admin',
+                        'nominal' => 0,
                         'bulan' => 1,
                         'tahun' => $year,
                     ]);
@@ -305,6 +321,13 @@ class BillBE
                             'bulan' => $latest['bulan'] + 1,
                             'tahun' => $latest['tahun'],
                         ]);
+                        $this->db->insert('spp_tagihan_detail', [
+                            'tagihan_id' => $bill['id'],
+                            'jenis' => 'admin',
+                            'nominal' => 0,
+                            'bulan' => $latest['bulan'] + 1,
+                            'tahun' => $latest['tahun'],
+                        ]);
                     }
                 } else {
                     // $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
@@ -323,6 +346,14 @@ class BillBE
                         'jenis' => 'late',
                         'nominal' => Call::denda(),
                         'bulan' => $latest['bulan'],
+                        'tahun' => $latest['tahun'],
+                    ]);
+
+                    $this->db->insert('spp_tagihan_detail', [
+                        'tagihan_id' => $bill['id'],
+                        'jenis' => 'admin',
+                        'nominal' => 0,
+                        'bulan' => $latest['bulan'] + 1,
                         'tahun' => $latest['tahun'],
                     ]);
 
@@ -937,6 +968,7 @@ class BillBE
             'tagihan_id' => $data['billId'],
             'bulan' => (int) $data['month'],
             'tahun' => $data['year'],
+            'nominal' => ['>', 0]
         ]);
         $feeRecap = [
             'spp' => 0,
@@ -951,6 +983,7 @@ class BillBE
                 $feeRecap['denda'] = $fee['nominal'];
                 $lateCount++;
             } else {
+                $fee['jenis'] = ucfirst($fee['jenis']);
                 $feeRecap['dynamic_fees'][] = $fee;
             }
         }

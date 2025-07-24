@@ -80,7 +80,7 @@ CREATE TABLE `spp_tagihan` (
 CREATE TABLE `spp_tagihan_detail` (
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `tagihan_id` int,
-  `jenis` enum('spp','late','praktek','ekstra','daycare'),
+  `jenis` enum('spp','late','praktek','ekstra','daycare','admin'),
   `nominal` decimal(15,2),
   `keterangan` varchar(255),
   `bulan` int,
