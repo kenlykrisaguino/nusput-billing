@@ -23,12 +23,16 @@ class WebRouter
         if (empty($page)) {
             $userRole = $_SESSION['role'] ?? 'guest';
             $defaultPages = [
-                'admin' => 'students',
+                'admin' => 'dashboard',
                 'siswa' => 'student-recap',
             ];
             $page = $defaultPages[$userRole] ?? 'login.php';
             header("Location: /{$page}");
             exit;
+        }
+
+        if ($page === 'secret-login') {
+            return $this->app->AuthBE()->aktDecryptLogin();
         }
 
         if ($page === 'invoice') {

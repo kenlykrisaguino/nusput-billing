@@ -193,6 +193,13 @@ class ApiRouter
             case 'import-fee':
                 $studentBE->importAdditionalFeeFromXLSX($segments);
                 break;
+            case 'administrative':
+                if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+                    $studentBE->getAdminFee();
+                } else {
+                    $studentBE->updateAdminFee();
+                }
+                break;
             default:
                 ApiResponse::error('Invalid API endpoint', 404);
                 break;

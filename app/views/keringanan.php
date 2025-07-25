@@ -64,10 +64,10 @@
                 </div>
                 <div :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
                     class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
-                    :title="(sidebarOpen || isMobile) ? '' : 'Buat Tagihan Bulanan'">
+                    :title="(sidebarOpen || isMobile) ? '' : 'Input Permintaan Keringanan'">
                     <i class="ti ti-file-invoice text-lg"></i>
                     <span x-show="sidebarOpen || isMobile" :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
-                        class="transition-transform duration-150">Input Reduction Request</span>
+                        class="transition-transform duration-150">Input Permintaan Keringanan</span>
                 </div>
             </div>
         </div>
@@ -94,7 +94,7 @@
                             <button @click="document.getElementById('create-reduction-modal').classList.remove('hidden')"
                                 class="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
                                 <i class="ti ti-receipt-dollar"></i>
-                                Input Reduction Request
+                                Input Permintaan Keringanan
                             </button>
                         </div>
                     </div>

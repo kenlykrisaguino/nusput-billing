@@ -90,36 +90,12 @@ class ReductionBE
             return ApiResponse::error('Nominal peringanan biaya terlambat uang sekolah melebihi batas : ' . FormatHelper::formatRupiah($lateBill['nominal']), 400);
         }
 
-        $adminBill = $this->db->find('spp_tagihan_detail', [
-            'tagihan_id' => $bill['id'],
-            'bulan' => $data['bulan'],
-            'tahun' => $data['tahun'],
-            'jenis' => 'admin'
-        ]);
-
-        if(!isset($adminBill)){
-            $this->db->insert('spp_tagihan_detail', [
-                'tagihan_id' => $bill['id'],
-                'bulan' => $data['bulan'],
-                'tahun' => $data['tahun'],
-                'jenis' => 'admin',
-                'nominal' => Call::adminVA()
-            ]);
-        }
-
         try {
             $this->db->beginTransaction();
             $trx_id = Call::uuidv4();
 
-                
-            $this->db->update('spp_tagihan_detail', [
-                'nominal' => $adminBill['nominal'] + Call::adminVA()
-            ], [
-                'tagihan_id' => $bill['id'],
-                'bulan' => $data['bulan'],
-                'tahun' => $data['tahun'],
-                'jenis' => 'admin'
-            ]);
+            $tahun = $this->db->fetchAssoc($this->db->query("SELECT MAX(tahun) AS tahun FROM spp_tagihan"))['tahun'];
+            $bulan = $this->db->fetchAssoc($this->db->query("SELECT MAX(bulan) AS bulan FROM spp_tagihan WHERE tahun = ?", [$tahun]))['bulan'];
 
             $this->db->update(
                 'spp_tagihan_detail',
@@ -216,8 +192,7 @@ class ReductionBE
             
             SPP Awal: ". FormatHelper::formatRupiah($billAwal) ."
             Peringanan: - ". FormatHelper::formatRupiah($data['nominal']) ."
-            Admin: +". FormatHelper::formatRupiah(Call::adminVA()) ."
-            Total Akhir: ". FormatHelper::formatRupiah($sum);
+            Total Akhir: ". FormatHelper::formatRupiah($billAwal - $data['nominal']);
 
             $msgLists[] = [
                 'target' => $siswa['no_hp_ortu'],

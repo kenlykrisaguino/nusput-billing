@@ -181,10 +181,49 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="bg-amber-50 shadow-lg rounded-xl p-4 w-full space-y-4 border border-amber-100">
+                                <div class="flex items-center gap-2 text-amber-700">
+                                    <i class="ti ti-file-alert text-xl"></i>
+                                    <p class="text-sm font-semibold">Penerbitan Tagihan VA</p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="bg-white rounded-md p-3 shadow-sm border-l-4 border-amber-500">
+                                        <div class="text-xs font-medium text-amber-800">Piutang lain-lain (Debit)
+                                        </div>
+                                        <div class="text-md font-semibold text-gray-800 penerbitan-denda"><?= FormatHelper::formatRupiah($data['hutang_va'])?></div>
+                                    </div>
+
+                                    <div class="bg-white rounded-md p-3 shadow-sm border-r-4 border-amber-500 text-right">
+                                        <div class="text-xs font-medium text-amber-800">Pendapatan lain-lain (Kredit)
+                                        </div>
+                                        <div class="text-md font-semibold text-gray-800 penerbitan-denda"><?= FormatHelper::formatRupiah($data['hutang_va'])?></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-violet-50 shadow-lg rounded-xl p-4 w-full space-y-4 border border-violet-100">
+                                <div class="flex items-center gap-2 text-violet-700">
+                                    <i class="ti ti-file-alert text-xl"></i>
+                                    <p class="text-sm font-semibold">Pelunasan Tagihan VA</p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="bg-white rounded-md p-3 shadow-sm border-l-4 border-violet-500">
+                                        <div class="text-xs font-medium text-violet-800">Bank (Debit)
+                                        </div>
+                                        <div class="text-md font-semibold text-gray-800 denda-lunas"><?= FormatHelper::formatRupiah($data['hutang_va_terbayar'])?></div>
+                                    </div>
+
+                                    <div class="bg-white rounded-md p-3 shadow-sm border-r-4 border-violet-500 text-right">
+                                        <div class="text-xs font-medium text-violet-800">Piutang lain lain (Kredit)
+                                        </div><?= FormatHelper::formatRupiah($data['hutang_va_terbayar'])?></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
-                <section id="recap">
+                <section id="recap" class="mt-4">
                     <div class="flex justify-between items-center">
                         <h3 class="font-semibold text-xl text-slate-700">Rekap Keuangan</h3>
                         <div class="flex items-center gap-2">

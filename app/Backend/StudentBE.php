@@ -1152,7 +1152,7 @@ class StudentBE
         exit();
     }
 
-        /**
+    /**
      * Menangani upload file Excel untuk impor siswa massal.
      */
     public function importAdditionalFeeFromXLSX()
@@ -1253,6 +1253,7 @@ class StudentBE
                 }
 
                 $detail = $this->db->find('spp_tagihan_detail', [
+                    'tagihan_id' => $bill['id'],
                     'jenis'=> $row['jenis'],
                     'bulan' => $row['bulan'],
                     'tahun' => $row['tahun']
@@ -1333,5 +1334,38 @@ class StudentBE
             error_log('Gagal impor massal: ' . $e->getMessage());
             return ApiResponse::error('Terjadi kesalahan saat menyimpan data ke database. ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Mendapatkan Biaya Admin Bulanan
+     */
+
+    public function getAdminFee()
+    {
+        $value = $this->db->find('config', ['key' => 'admin'])['value'];
+        return ApiResponse::success($value, 'Get Admin Fee Successful');
+    }
+
+    /**
+     * Mengupdate Biaya Admin bulanan
+     */
+    public function updateAdminFee()
+    {
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+
+        $key = "admin";
+        $value = $data['value'];
+
+        $oldValue = $this->db->find('config', ['key' => 'admin'])['value'];
+
+        $this->db->update('config', [
+            'value' => $value,
+            'updated_at' => Call::timestamp()
+        ], [
+            'key' => $key
+        ]);
+
+        return ApiResponse::success([], "Update Biaya admin dari $oldValue -> $value berhasil");
     }
 }

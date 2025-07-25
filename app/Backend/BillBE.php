@@ -99,6 +99,8 @@ class BillBE
         try {
             $this->db->beginTransaction();
 
+            $admin = $this->db->find('config', ['key' => 'admin'])['value'];
+
             // 1. Tahun dibuat tagihannya (Kalau belum ada tagihan sebelumnya, pakai tahun sekarang)
             $stmt = 'SELECT MAX(tahun) AS tahun FROM spp_tagihan';
             $query = $this->db->query($stmt);
@@ -147,7 +149,7 @@ class BillBE
                     $this->db->insert('spp_tagihan_detail', [
                         'tagihan_id' => $billId,
                         'jenis' => 'admin',
-                        'nominal' => 0,
+                        'nominal' => $admin,
                         'bulan' => 1,
                         'tahun' => $bill['tahun'] + 1,
                     ]);
@@ -193,7 +195,7 @@ class BillBE
                     $this->db->insert('spp_tagihan_detail', [
                         'tagihan_id' => $billId,
                         'jenis' => 'admin',
-                        'nominal' => 0,
+                        'nominal' => $admin,
                         'bulan' => 1,
                         'tahun' => $year,
                     ]);
@@ -261,6 +263,7 @@ class BillBE
         if ($latest['bulan'] > 12) {
             return ApiResponse::error('Sudah melakukan cek tagihan sampai bulan desember, harap lakukan buat tagihan untuk melanjutkan');
         }
+        $admin = $this->db->find('config', ['key' => 'admin'])['value'];
 
         // 2. Get tagihan yang pakai bulan dan tahun ini
         $bills = $this->db->findAll('spp_tagihan', ['tahun' => $latest['tahun'], 'bulan' => $latest['bulan'], 'is_active' => 1]);
@@ -311,6 +314,11 @@ class BillBE
                         ['id' => $bill['id']],
                     );
 
+                    $this->db->update('spp_tagihan_detail', [
+                        'nominal_bulan' => 0,
+                        'bulan_dibuat' => $latest['bulan'] + 1,
+                    ], ['jenis' => 'admin', 'lunas' => 0, 'tagihan_id' => $bill['id']]);
+
                     $countTotal = $student['spp'];
 
                     if ($latest['bulan'] < 12) {
@@ -324,7 +332,7 @@ class BillBE
                         $this->db->insert('spp_tagihan_detail', [
                             'tagihan_id' => $bill['id'],
                             'jenis' => 'admin',
-                            'nominal' => 0,
+                            'nominal' => $admin,
                             'bulan' => $latest['bulan'] + 1,
                             'tahun' => $latest['tahun'],
                         ]);
@@ -341,6 +349,11 @@ class BillBE
                         ]);
                     }
 
+                    $this->db->update('spp_tagihan_detail', [
+                        'nominal_bulan' => 0,
+                        'bulan_dibuat' => $latest['bulan'],
+                    ], ['jenis' => 'admin', 'lunas' => 0, 'tagihan_id' => $bill['id']]);
+
                     $this->db->insert('spp_tagihan_detail', [
                         'tagihan_id' => $bill['id'],
                         'jenis' => 'late',
@@ -352,7 +365,7 @@ class BillBE
                     $this->db->insert('spp_tagihan_detail', [
                         'tagihan_id' => $bill['id'],
                         'jenis' => 'admin',
-                        'nominal' => 0,
+                        'nominal' => $admin,
                         'bulan' => $latest['bulan'] + 1,
                         'tahun' => $latest['tahun'],
                     ]);
@@ -618,18 +631,24 @@ class BillBE
                         'PLUS' => 0.0,
                         'PNBD' => 0.0,
                         'PBDL' => 0.0,
+                        'PNVA' => 0.0,
+                        'PLVA' => 0.0,
                     ];
                 }
                 $journalData['SMK1']['PTUS'] += $journals['piutang'];
                 $journalData['SMK1']['PLUS'] += $journals['pelunasan'];
                 $journalData['SMK1']['PNBD'] += $journals['hutang'];
                 $journalData['SMK1']['PBDL'] += $journals['hutang_terbayar'];
+                $journalData['SMK1']['PNVA'] += $journals['hutang_va'];
+                $journalData['SMK1']['PLVA'] += $journals['hutang_va_terbayar'];
             } else {
                 $journalData[$level['nama']] = [
                     'PTUS' => $journals['piutang'] ?? 0.0,
                     'PLUS' => $journals['pelunasan'] ?? 0.0,
                     'PNBD' => $journals['hutang'] ?? 0.0,
                     'PBDL' => $journals['hutang_terbayar'] ?? 0.0,
+                    'PNVA' => $journals['hutang_va'] ?? 0.0,
+                    'PLVA' => $journals['hutang_va_terbayar'] ?? 0.0,
                 ];
             }
         }

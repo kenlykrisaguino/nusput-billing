@@ -285,6 +285,127 @@ class JournalBE
         return $result;
     }
 
+    protected function getVAFee(bool $for_akt, $params = [])
+    {
+        $q = ["u.deleted_at IS NULL"];
+        $p = [];
+
+        if (!empty($params['siswa'])) {
+            $q[] = "u.id = ?";
+            $p[] = $params['siswa'];
+        }
+        if (!empty($params['level'])) {
+            $q[] = "j.id = ?";
+            $p[] = $params['level'];
+        }
+        if (!empty($params['grade'])) {
+            $q[] = "t.id = ?";
+            $p[] = $params['grade'];
+        }
+        if (!empty($params['section'])) {
+            $q[] = "k.id = ?";
+            $p[] = $params['section'];
+        }
+        if (!empty($params['bulan'])) {
+            $q[] = "d.bulan <= ?";
+            $p[] = (int)$params['bulan'];
+        }
+
+        if (!empty($params['start']) && !empty($params['end'])) {
+            $startDateStr = $params['start'];
+            $startDate = new DateTime($startDateStr);
+            $start_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end'];
+            $endDate = new DateTime($endDateStr);
+            $end_plus_one_month = $endDate->format('Y-m-d');
+
+            $q[] = "b.jatuh_tempo >= ?";
+            $p[] = $start_plus_one_month;
+            $q[] = "b.jatuh_tempo <= ?";
+            $p[] = $end_plus_one_month;
+        }
+
+        $query = "SELECT
+            SUM(CASE
+                WHEN d.jenis = 'admin' AND d.lunas = false
+                THEN d.nominal
+                ELSE 0
+            END) AS result
+        FROM
+            spp_tagihan_detail d JOIN
+            spp_tagihan b ON d.tagihan_id = b.id LEFT JOIN
+            siswa u ON b.siswa_id = u.id LEFT JOIN
+            jenjang j on u.jenjang_id = j.id LEFT JOIN
+            tingkat t on u.tingkat_id = t.id LEFT JOIN
+            kelas k on u.kelas_id = k.id
+        WHERE " . implode(" AND ", $q);
+
+        $result = $this->db->fetchAssoc($this->db->query($query, $p));
+
+        return $result;
+    }
+    protected function getPaidVAFee(bool $for_akt, $params = [])
+    {
+        $paramQuery = NULL_VALUE;
+
+        $q = ["u.deleted_at IS NULL"];
+        $p = [];
+
+        if (!empty($params['siswa'])) {
+            $q[] = "u.id = ?";
+            $p[] = $params['siswa'];
+        }
+        if (!empty($params['level'])) {
+            $q[] = "j.id = ?";
+            $p[] = $params['level'];
+        }
+        if (!empty($params['grade'])) {
+            $q[] = "t.id = ?";
+            $p[] = $params['grade'];
+        }
+        if (!empty($params['section'])) {
+            $q[] = "k.id = ?";
+            $p[] = $params['section'];
+        }
+        if (!empty($params['bulan'])) {
+            $q[] = "d.bulan <= ?";
+            $p[] = $params['bulan'] + 1;
+        }
+
+        if (!empty($params['start']) && !empty($params['end'])) {
+            $startDateStr = $params['start'];
+            $startDate = new DateTime($startDateStr);
+            $start_plus_one_month = $startDate->format('Y-m-d');
+            $endDateStr = $params['end'];
+            $endDate = new DateTime($endDateStr);
+            $end_plus_one_month = $endDate->format('Y-m-d');
+
+            $q[] = "b.jatuh_tempo >= ?";
+            $p[] = $start_plus_one_month;
+            $q[] = "b.jatuh_tempo <= ?";
+            $p[] = $end_plus_one_month;
+        }
+
+        $query = "SELECT
+            SUM(CASE
+                WHEN d.jenis = 'admin' AND d.lunas = true
+                THEN d.nominal
+                ELSE 0
+            END) AS result
+        FROM
+            spp_tagihan_detail d JOIN
+            spp_tagihan b ON d.tagihan_id = b.id LEFT JOIN
+            siswa u ON b.siswa_id = u.id LEFT JOIN
+            jenjang j on u.jenjang_id = j.id LEFT JOIN
+            tingkat t on u.tingkat_id = t.id LEFT JOIN
+            kelas k on u.kelas_id = k.id
+        WHERE " . implode(" AND ", $q);
+
+        $result = $this->db->fetchAssoc($this->db->query($query, $p));
+
+        return $result;
+    }
+
     public function getJournals($level = NULL_VALUE, $for_akt = false, $for_export = false, $bulan = NULL_VALUE)
     {
         $journalDate = Call::splitDate(); 
@@ -335,6 +456,8 @@ class JournalBE
             'pelunasan' => $this->schoolFeeSettlement($for_akt, $params)['result'],
             'hutang' => $this->getLateFee($for_akt, $params)['result'],
             'hutang_terbayar' => $this->getPaidLateFee($for_akt, $params)['result'],
+            'hutang_va' => $this->getVAFee($for_akt, $params)['result'],
+            'hutang_va_terbayar' => $this->getPaidVAFee($for_akt, $params)['result'],
         ];
 
         if ($for_export) {
@@ -547,6 +670,11 @@ class JournalBE
         $nextRowLeft = $drawJournalSubTable($sheet, 'A', 'B', $currentRow, 'PENERBITAN DENDA', 'PIUT. DENDA', $dataJurnal['hutang'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PENERIMAAN - UANG DENDA', $dataJurnal['hutang'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
 
         $nextRowRight = $drawJournalSubTable($sheet, 'D', 'E', $currentRow, 'PEMBAYARAN DENDA LUNAS', 'BANK BNI', $dataJurnal['hutang_terbayar'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PIUT. DENDA', $dataJurnal['hutang_terbayar'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
+        $currentRow = max($nextRowLeft, $nextRowRight);
+        $currentRow++;
+        $nextRowLeft = $drawJournalSubTable($sheet, 'A', 'B', $currentRow, 'PENERBITAN TAGIHAN VA', 'PIUT. LAIN-LAIN', $dataJurnal['hutang_va'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PENDAPATAN LAIN-LAIN', $dataJurnal['hutang_va'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
+        $nextRowRight = $drawJournalSubTable($sheet, 'D', 'E', $currentRow, 'PELUNASAN TAGIHAN VA', 'BANK', $dataJurnal['hutang_va_terbayar'] ?? 0, true, Alignment::HORIZONTAL_LEFT, 'PIUT. LAIN-LAIN', $dataJurnal['hutang_va_terbayar'] ?? 0, false, Alignment::HORIZONTAL_RIGHT, $formatCurrency);
+
 
         \PhpOffice\PhpSpreadsheet\IOFactory::registerWriter('Pdf', Mpdf::class);
         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Pdf');

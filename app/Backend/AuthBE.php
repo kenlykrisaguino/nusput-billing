@@ -271,4 +271,55 @@ class AuthBE
         $url = "$base_url/secret-login.php?secret=".$encrypted_with_iv;
         header('Location: '.$url, true);
     }
+
+    public function aktDecryptLogin()
+    {
+        if(!isset($_GET['secret'])){
+            return ApiResponse::error("Page Not Found", 404);
+        }
+
+        $secret = $_GET['secret'];
+        $key = $_ENV['NUSPUT_SECRET_KEY'];
+        $method = $_ENV['ENCRYPTION_METHOD'];
+        
+        $data = base64_decode($secret);
+
+        if ($data === false) {
+            return ApiResponse::error('Invalid base64 data');
+        }
+
+        $ivLength = openssl_cipher_iv_length($method);
+        $iv = substr($data, 0, $ivLength);
+        $cipherText = substr($data, $ivLength);
+
+        $string = openssl_decrypt($cipherText, $method, $key, 0, $iv);
+
+        if (!$string) {
+            return ApiResponse::error("Failed to Decrypt Details");
+        }
+
+        $decrypted = explode('|-|', $string);
+        if (count($decrypted) != 2) {
+            return ApiResponse::error("Invalid Details format");
+        }
+
+        [$user, $bill] = $decrypted;
+
+        $user = $this->db->find('users', [
+            'username' => $user
+        ]);
+
+        if(!isset($user)){
+            return ApiResponse::error("Login Failed");
+        }
+
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['role'] = $user['role'];
+
+        if($user['role'] == 'admin'){
+            header("Location: /dashboard");
+        } else {
+            header("Location: /login.php");
+        }
+    }
 }

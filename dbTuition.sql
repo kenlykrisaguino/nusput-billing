@@ -89,7 +89,7 @@ CREATE TABLE `spp_tagihan_detail` (
   `lunas` boolean DEFAULT FALSE
 );
 
-CREATE TABLE `spp_pembayaran_tagihan` (
+CREATE TABLE `spp_pembayaran_tagihan`(
   `id` int PRIMARY KEY AUTO_INCREMENT,
   `pembayaran_id` int,
   `tagihan_id` int,
@@ -116,6 +116,14 @@ CREATE TABLE `users` (
   `otp_created` timestamp DEFAULT NOW()
 );
 
+CREATE TABLE `config` (
+  `id` int PRIMARY KEY AUTO_INCREMENT,
+  `key` varchar(255) UNIQUE,
+  `value` varchar(255),
+  `created_at` TIMESTAMP DEFAULT NOW(),
+  `updated_at` TIMESTAMP DEFAULT NOW()
+);
+
 ALTER TABLE `tingkat` ADD FOREIGN KEY (`jenjang_id`) REFERENCES `jenjang` (`id`);
 ALTER TABLE `kelas` ADD FOREIGN KEY (`tingkat_id`) REFERENCES `tingkat` (`id`);
 ALTER TABLE `siswa` ADD FOREIGN KEY (`jenjang_id`) REFERENCES `jenjang` (`id`);
@@ -133,6 +141,9 @@ ALTER TABLE `spp_pembayaran_tagihan` ADD FOREIGN KEY (`pembayaran_id`) REFERENCE
 ALTER TABLE `spp_pembayaran_tagihan` ADD FOREIGN KEY (`tagihan_id`) REFERENCES `spp_tagihan` (`id`);
 ALTER TABLE `spp_request_keringanan` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
 ALTER TABLE `users` ADD FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`);
+
+INSERT INTO `config` (`key`, `value`) VALUES
+('admin', 2000);
 
 INSERT INTO `jenjang` (`nama`, `va_code`) VALUES
 ('TK', 3),

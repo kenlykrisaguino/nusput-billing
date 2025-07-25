@@ -665,6 +665,7 @@ class PaymentBE
                     'tanggal_pembayaran' => Call::timestamp(),
                     'jumlah_bayar' => $grossAmount,
                 ]);
+                
                 $this->db->update('spp_tagihan_detail', ['lunas' => 1, 'pembayaran_id' => $payment], ['tagihan_id' => $bill['id'], 'lunas' => 0]);
                 $relasiTagihan = $this->db->insert('spp_pembayaran_tagihan', [
                     'pembayaran_id' => $payment,

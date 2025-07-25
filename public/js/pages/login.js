@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const userRole = response.data.data.role;
 
           if (userRole === "admin") {
-            window.location.href = "/students";
+            window.location.href = "/dashboard";
           } else {
             window.location.href = "/student-recap";
           }

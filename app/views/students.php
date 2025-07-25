@@ -89,6 +89,13 @@
                         class="ti ti-refresh-dot text-lg"></i><span x-show="sidebarOpen || isMobile"
                         :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
                         class="transition-transform duration-150">Import Biaya Tambahan</span></div>
+                <div @click="document.getElementById('update-admin-modal').classList.remove('hidden')"
+                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
+                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
+                    :title="(sidebarOpen || isMobile) ? '' : 'Update Biaya Admin Siswa'"><i
+                        class="ti ti-refresh-dot text-lg"></i><span x-show="sidebarOpen || isMobile"
+                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
+                        class="transition-transform duration-150">Update Biaya Admin</span></div>
                 <div x-show="sidebarOpen" class="flex gap-2 items-center mb-2 mt-4">
                     <h4 class="text-xs uppercase">class actions</h4>
                     <div class="flex-1">
@@ -282,6 +289,7 @@
 <?php include_once __DIR__ . '/modals/tariff-create.php'; ?>
 <?php include_once __DIR__ . '/modals/tariff-edit.php'; ?>
 <?php include_once __DIR__ . '/modals/additional-import.php'; ?>
+<?php include_once __DIR__ . '/modals/admin-update.php'; ?>
 
 <script src="/js/flowbite.min.js"></script>
 <script src="/js/datatables.js"></script>

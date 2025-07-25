@@ -49,12 +49,32 @@ class Database
         }
 
         if ($params) {
-            $types = str_repeat('s', count($params));
+            $types = '';
+            
+            foreach ($params as $param) {
+                if (is_int($param)) {
+                    $types .= 'i'; // Integer
+                } elseif (is_float($param)) {
+                    $types .= 'd'; // Double / Float
+                } elseif (is_string($param)) {
+                    $types .= 's'; // String
+                } else {
+                    $types .= 's'; 
+                }
+            }
+            
             $stmt->bind_param($types, ...$params);
         }
 
         $stmt->execute();
-        return $stmt->get_result();
+
+        $result = $stmt->get_result();
+        
+        if ($result === false && $stmt->errno === 0) {
+            return true;
+        }   
+
+        return $result;
     }
 
     /**
