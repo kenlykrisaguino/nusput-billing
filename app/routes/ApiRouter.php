@@ -163,6 +163,9 @@ class ApiRouter
             case 'upload-students-bulk':
                 $studentBE->importStudentsFromXLSX();
                 break;
+            case 'migrate-students-bulk':
+                $studentBE->migrateStudentsFromXLSX();
+                break;
             case 'update-students-bulk':
                 $studentBE->bulkUpdateStudentsFromXLSX();
                 break;

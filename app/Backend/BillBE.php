@@ -314,11 +314,6 @@ class BillBE
                         ['id' => $bill['id']],
                     );
 
-                    $this->db->update('spp_tagihan_detail', [
-                        'nominal_bulan' => 0,
-                        'bulan_dibuat' => $latest['bulan'] + 1,
-                    ], ['jenis' => 'admin', 'lunas' => 0, 'tagihan_id' => $bill['id']]);
-
                     $countTotal = $student['spp'];
 
                     if ($latest['bulan'] < 12) {
@@ -348,11 +343,6 @@ class BillBE
                             'tahun' => $latest['tahun'],
                         ]);
                     }
-
-                    $this->db->update('spp_tagihan_detail', [
-                        'nominal_bulan' => 0,
-                        'bulan_dibuat' => $latest['bulan'],
-                    ], ['jenis' => 'admin', 'lunas' => 0, 'tagihan_id' => $bill['id']]);
 
                     $this->db->insert('spp_tagihan_detail', [
                         'tagihan_id' => $bill['id'],

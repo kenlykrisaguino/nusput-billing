@@ -1120,7 +1120,7 @@ class StudentBE
         return $result;
     }
 
-        /**
+    /**
      * Membuat dan mengirimkan file template Excel untuk impor biaya tambahan.
      */
     public function getAdditionalFeeFormatXLSX()
@@ -1367,5 +1367,211 @@ class StudentBE
         ]);
 
         return ApiResponse::success([], "Update Biaya admin dari $oldValue -> $value berhasil");
+    }
+
+        /**
+     * Membuat dan mengirimkan file template Excel untuk impor siswa lama ke sistem.
+     */
+    public function getMigrateStudentFormatXLSX()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = ['NIS', 'Nama Lengkap',  'VA', 'SPP','Jenjang', 'Tingkat', 'Kelas', 'No. HP Orang Tua'];
+        $sheet->fromArray([$headers], null, 'A1');
+
+        foreach (range('A', $sheet->getHighestColumn()) as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+        $sheet
+            ->getStyle('A1:' . $sheet->getHighestColumn() . '1')
+            ->getFont()
+            ->setBold(true);
+
+        $writer = new Xlsx($spreadsheet);
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="migrate_old_siswa.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer->save('php://output');
+        exit();
+    }
+
+    
+    /**
+     * Menangani upload file Excel untuk impor siswa lama secara massal ke dalam sistem.
+     */
+    public function migrateStudentsFromXLSX()
+    {
+        if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+            return ApiResponse::error('Metode tidak diizinkan', 405);
+        }
+
+        if (!isset($_FILES['migrate_old_siswa']) || $_FILES['migrate_old_siswa']['error'] !== UPLOAD_ERR_OK) {
+            return ApiResponse::error('Error saat upload file. Pastikan nama input adalah "migrate_old_siswa".', 400);
+        }
+
+        $filePath = $_FILES['migrate_old_siswa']['tmp_name'];
+
+        // 1. Memuat semua data master untuk validasi
+        $jenjangData = $this->db->findAll('jenjang');
+        $tingkatData = $this->db->findAll('tingkat');
+        $kelasData = $this->db->findAll('kelas');
+
+        // Buat map untuk pencarian cepat (case-insensitive)
+        $jenjangMap = [];
+        foreach ($jenjangData as $j) {
+            $jenjangMap[strtolower($j['nama'])] = $j['id'];
+        }
+
+        $tingkatMap = [];
+        foreach ($tingkatData as $t) {
+            $tingkatMap[strtolower($t['nama'])][$t['jenjang_id']] = $t['id'];
+        }
+
+        $kelasMap = [];
+        foreach ($kelasData as $k) {
+            $kelasMap[strtolower($k['nama'])][$k['tingkat_id']] = $k['id'];
+        }
+
+        $validRows = [];
+        $errorRows = [];
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $highestRow = $sheet->getHighestDataRow();
+            $header = $sheet->rangeToArray('A1:H1', null, true, false)[0];
+
+            // 2. Loop melalui setiap baris di Excel (mulai dari baris 2)
+            for ($rowNum = 2; $rowNum <= $highestRow; $rowNum++) {
+                $rowData = $sheet->rangeToArray('A' . $rowNum . ':H' . $rowNum, null, true, false)[0];
+                if (empty(array_filter($rowData))) {
+                    continue;
+                }
+
+                $headers = ['NIS', 'Nama Lengkap',  'VA', 'SPP','Jenjang', 'Tingkat', 'Kelas', 'No. HP Orang Tua'];
+                $rowErrors = [];
+                $nis = trim($rowData[0] ?? '');
+                $nama = trim($rowData[1] ?? '');
+                $va = trim($rowData[2] ?? '');
+                $spp = trim($rowData[3] ?? '');
+                $jenjangName = strtolower(trim($rowData[4] ?? ''));
+                $tingkatName = strtolower(trim($rowData[5] ?? ''));
+                $kelasName = strtolower(trim($rowData[6] ?? ''));
+                $noHpOrtu = trim($rowData[7] ?? '');
+
+                // 3. Validasi setiap kolom
+                if (empty($nis)) {
+                    $rowErrors[] = 'NIS wajib diisi.';
+                }
+                if (empty($nama)) {
+                    $rowErrors[] = 'Nama wajib diisi.';
+                }
+                if (empty($va)) {
+                    $rowErrors[] = 'Nama wajib diisi.';
+                }
+                if (empty($spp)) {
+                    $rowErrors[] = 'Nama wajib diisi.';
+                }
+                if (empty($jenjangName)) {
+                    $rowErrors[] = 'Jenjang wajib diisi.';
+                }
+                if (empty($tingkatName)) {
+                    $rowErrors[] = 'Tingkat wajib diisi.';
+                }
+
+                $jenjangId = $jenjangMap[$jenjangName] ?? null;
+                if (!$jenjangId) {
+                    $rowErrors[] = "Jenjang '{$rowData[2]}' tidak ditemukan.";
+                }
+
+                $tingkatId = $jenjangId ? $tingkatMap[$tingkatName][$jenjangId] ?? null : null;
+                if (!$tingkatId) {
+                    $rowErrors[] = "Tingkat '{$rowData[3]}' tidak valid untuk Jenjang '{$rowData[2]}'.";
+                }
+
+                $kelasId = $tingkatId ? $kelasMap[$kelasName][$tingkatId] ?? null : null;
+                if ($kelasName !== '' && !$kelasId) {
+                    $rowErrors[] = "Kelas '{$rowData[4]}' tidak valid untuk Tingkat '{$rowData[3]}'.";
+                }
+
+                if (empty($rowErrors)) {
+                    $validRows[] = [
+                        'nis' => $nis,
+                        'nama' => $nama,
+                        'va' => $va,
+                        'spp' => $spp,
+                        'jenjang_id' => $jenjangId,
+                        'tingkat_id' => $tingkatId,
+                        'kelas_id' => $kelasId,
+                        'no_hp_ortu' => $noHpOrtu,
+                    ];
+                } else {
+                    $errorRows[] = array_merge($rowData, [implode('; ', $rowErrors)]);
+                }
+            }
+        } catch (Exception $e) {
+            return ApiResponse::error('Gagal membaca file Excel: ' . $e->getMessage(), 500);
+        }
+
+        // 4. Proses hasil validasi
+        if (!empty($errorRows)) {
+            // Jika ada error, buat dan kirim file Excel berisi error
+            $this->sendErrorExcel($errorRows, array_merge($header, ['Errors']));
+        }
+
+        if (empty($validRows)) {
+            return ApiResponse::error('Tidak ada data valid yang ditemukan untuk diimpor.', 400);
+        }
+
+        // 5. Simpan semua data valid ke database
+        try {
+            $this->db->beginTransaction();
+            $sppTarifCache = [];
+
+            foreach ($validRows as $row) {
+                $spp = $row['spp'];
+
+                // Siapkan data untuk tabel 'siswa' dan 'users'
+                $va = $row['va'];
+
+                $studentData = [
+                    'nama' => $row['nama'],
+                    'nis' => $row['nis'],
+                    'jenjang_id' => $row['jenjang_id'],
+                    'tingkat_id' => $row['tingkat_id'],
+                    'kelas_id' => $row['kelas_id'],
+                    'va' => $va,
+                    'no_hp_ortu' => $row['no_hp_ortu'],
+                    'spp' => $spp,
+                ];
+                $newStudentId = $this->db->insert('siswa', $studentData);
+
+                if (!$newStudentId) {
+                    throw new Exception("Gagal menyimpan siswa dengan NIS {$row['nis']}");
+                }
+
+                $userData = [
+                    'username' => $va,
+                    'password' => FormatHelper::hashPassword($va),
+                    'role' => 'siswa',
+                    'siswa_id' => $newStudentId,
+                ];
+                $this->db->insert('users', $userData);
+                $this->billBE->createSingularBill($newStudentId);
+            }
+
+            $this->db->commit();
+            return ApiResponse::success(null, count($validRows) . ' siswa berhasil diimpor.');
+        } catch (Exception $e) {
+            $this->db->rollback();
+            error_log('Gagal impor massal: ' . $e->getMessage());
+            return ApiResponse::error('Terjadi kesalahan saat menyimpan data ke database. ' . $e->getMessage(), 500);
+        }
     }
 }

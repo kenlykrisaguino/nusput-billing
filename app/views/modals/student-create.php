@@ -41,6 +41,11 @@
                     class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none">
                     Isi Form Manual
                 </button>
+                <button @click="activeTab = 'migrate'"
+                    :class="{ 'border-sky-500 text-sky-600': activeTab === 'migrate', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'migrate' }"
+                    class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none">
+                    Migrasi Siswa (Bulk)
+                </button>
             </nav>
         </div>
 
@@ -167,6 +172,50 @@
                     </div>
                 </form>
             </div>
+
+            <div x-show="activeTab === 'migrate'" id="migrate-section" class="space-y-6">
+                <div>
+                    <p class="text-sm text-gray-600 mb-2">
+                        Gunakan fitur ini untuk pemindahan banyak siswa dari sistem lama ke sistem Pembayaran Terbaru
+                        sekaligus menggunakan file Excel (.xlsx). Pastikan format file Anda sesuai dengan template yang disediakan.
+                    </p>
+                    <a href="/format?type=migrate-student" download
+                        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mb-4">
+                        <i class="ti ti-file-download mr-2 -ml-1"></i>
+                        Unduh Template Excel
+                    </a>
+                </div>
+                <form id="bulk-migrate-form" enctype="multipart/form-data" class="space-y-4">
+                    <div>
+                        <label for="migrate_old_siswa" class="block text-sm font-medium text-gray-700 mb-1">Pilih File
+                            Excel (.xlsx)</label>
+                        <input type="file" name="migrate_old_siswa" id="migrate_old_siswa" required accept=".xlsx"
+                            class="block w-full text-sm text-gray-500
+                                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                                      file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700
+                                      hover:file:bg-sky-100 cursor-pointer border border-gray-300 rounded-md p-1" />
+                        <p id="bulk-migrate-file-name-display" class="mt-1 text-xs text-gray-500">Belum ada file dipilih.</p>
+                    </div>
+                    <div class="pt-4 flex justify-end gap-3">
+                        <button type="button" @click="showModal = false"
+                            class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium">
+                            Batal
+                        </button>
+                        <button type="submit"
+                            class="px-6 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-colors text-sm font-medium flex items-center gap-2">
+                            <i class="ti ti-upload"></i>
+                            Mulai Migrasi
+                        </button>
+                    </div>
+                </form>
+                <div id="bulk-migrate-progress" class="hidden mt-4">
+                    <p class="text-sm text-sky-600">Sedang mengupload dan memproses file...</p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                        <div id="bulk-migrate-bar" class="bg-sky-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div id="bulk-migrate-result" class="mt-4 text-sm"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -178,6 +227,7 @@
 
         const manualForm = document.getElementById('create-student-form-manual');
         const bulkForm = document.getElementById('bulk-upload-student-form');
+        const migrateBulkForm = document.getElementById('bulk-migrate-form');
 
         const selectJenjang = document.getElementById('create_jenjang_id');
         const selectTingkat = document.getElementById('create_tingkat_id');
@@ -189,6 +239,12 @@
         const bulkProgress = document.getElementById('bulk-upload-progress');
         const bulkProgressBar = document.getElementById('bulk-upload-bar');
         const bulkResult = document.getElementById('bulk-upload-result');
+
+        const migrateFileInput = document.getElementById('migrate_old_siswa');
+        const migrateFileNameDisplay = document.getElementById('bulk-migrate-file-name-display');
+        const migrateBulkProgress = document.getElementById('bulk-migrate-progress');
+        const migrateBulkProgressBar = document.getElementById('bulk-migrate-bar');
+        const migrateBulkResult = document.getElementById('bulk-migrate-result');
 
         const resetSelect = (select, placeholder) => {
             select.innerHTML = `<option value="" disabled selected>${placeholder}</option>`;
@@ -292,6 +348,7 @@
             loadJenjang();
             manualForm.reset();
             bulkForm.reset();
+            migrateBulkForm.reset();
             resetSelect(selectTingkat, 'Pilih Tingkat');
             resetSelect(selectKelas, 'Pilih Kelas');
             fileNameDisplay.textContent = 'Belum ada file dipilih.';
@@ -356,14 +413,68 @@
             submitButton.innerHTML = 'Mengupload...';
             submitButton.disabled = true;
 
-            bulkProgress.classList.remove('hidden');
-            bulkProgressBar.style.width = '0%';
-            bulkResult.innerHTML = '';
+            migrateBulkProgress.classList.remove('hidden');
+            migrateBulkProgressBar.style.width = '0%';
+            migrateBulkResult.innerHTML = '';
 
             const formData = new FormData(this);
 
             try {
-                const response = await window.api.post('/upload-students-bulk', formData, {
+                const response = await window.api.post('/migrate-students-bulk', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    onUploadProgress: (progressEvent) => {
+                        const percentCompleted = Math.round((progressEvent.loaded *
+                            100) / progressEvent.total);
+                        migrateBulkProgressBar.style.width = `${percentCompleted}%`;
+                    }
+                });
+
+                if (response.data && response.data.success) {
+                    window.showToast(response.data.message || 'Siswa berhasil dimigrasi.', 'success');
+                    migrateBulkResult.innerHTML =
+                        `<div class="p-4 text-sm text-green-700 bg-green-100 rounded-lg">${response.data.message}</div>`;
+                    setTimeout(() => {
+                        const modalData = document.getElementById('create-student-modal').__x.$data;
+                        if(modalData) modalData.showModal = false;
+
+                        if (window.pages && typeof window.pages.students
+                            .loadStudentsData === 'function') {
+                            window.pages.students.loadStudentsData();
+                        }
+                    }, 2000);
+                }
+            } catch (error) {
+                const errorMessage = error.response?.data?.message || 'Gagal mengupload file.';
+                migrateBulkResult.innerHTML =
+                    `<div class="p-4 text-sm text-red-700 bg-red-100 rounded-lg">${errorMessage}</div>`;
+            } finally {
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
+            }
+        });
+
+        migrateFileInput.addEventListener('change', () => {
+            migrateFileNameDisplay.textContent = migrateFileInput.files.length > 0 ? migrateFileInput.files[0].name :
+                'Belum ada file dipilih.';
+        });
+
+        migrateBulkForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const submitButton = this.querySelector('button[type="submit"]');
+            const originalText = submitButton.innerHTML;
+            submitButton.innerHTML = 'Mengupload...';
+            submitButton.disabled = true;
+
+            migrateBulkProgress.classList.remove('hidden');
+            migrateBulkProgressBar.style.width = '0%';
+            migrateBulkResult.innerHTML = '';
+
+            const formData = new FormData(this);
+
+            try {
+                const response = await window.api.post('/migrate-students-bulk', formData, {
                     headers: {
                         'Content-Type': 'multipart/form-data'
                     },
@@ -375,7 +486,7 @@
                 });
 
                 if (response.data && response.data.success) {
-                    window.showToast(response.data.message || 'Siswa berhasil diimpor.', 'success');
+                    window.showToast(response.data.message || 'Siswa berhasil dimigrasi.', 'success');
                     bulkResult.innerHTML =
                         `<div class="p-4 text-sm text-green-700 bg-green-100 rounded-lg">${response.data.message}</div>`;
                     setTimeout(() => {

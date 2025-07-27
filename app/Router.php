@@ -90,6 +90,7 @@ class Router
             case 'student': $this->app->StudentBE()->getStudentFormatXLSX(); break;
             case 'payment': $this->app->PaymentBE()->getPaymentFormatXLSX(); break;
             case 'additional-fee': $this->app->StudentBE()->getAdditionalFeeFormatXLSX(); break;
+            case 'migrate-student': $this->app->StudentBE()->getMigrateStudentFormatXLSX(); break;
         }
         $this->back();
     }
