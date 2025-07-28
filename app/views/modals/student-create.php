@@ -420,7 +420,7 @@
             const formData = new FormData(this);
 
             try {
-                const response = await window.api.post('/migrate-students-bulk', formData, {
+                const response = await window.api.post('/upload-students-bulk', formData, {
                     headers: {
                         'Content-Type': 'multipart/form-data'
                     },
