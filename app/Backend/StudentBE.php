@@ -6,7 +6,6 @@ use app\Backend\BillBE;
 use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\FormatHelper;
-use App\Midtrans\Midtrans;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Exception;
@@ -17,14 +16,12 @@ class StudentBE
     private $db;
     private $classBE;
     private $billBE;
-    private $midtrans;
 
-    public function __construct($database, ClassBE $classBE, BillBE $billBE, Midtrans $midtrans)
+    public function __construct($database, ClassBE $classBE, BillBE $billBE)
     {
         $this->db = $database;
         $this->classBE = $classBE;
         $this->billBE = $billBE;
-        $this->midtrans = $midtrans;
     }
 
     /**
@@ -467,11 +464,6 @@ class StudentBE
 
             $sppTarifCache = [];
 
-            $mdTrx = $this->db->findAll('spp_tagihan', ['is_active' => 1]);
-            foreach($mdTrx as $trx){
-                // $this->midtrans->cancelTransaction($trx['midtrans_trx_id']);
-            }
-
             // --- Proses CREATE ---
             if (!empty($studentsToCreate)) {
                 foreach ($studentsToCreate as $row) {
@@ -788,13 +780,17 @@ class StudentBE
             return ApiResponse::error('Jenjang tidak valid.', 422);
         }
 
+        // Get Data Class
+        $siswa = $this->db->find('siswa', ['id' => (int) $id]);
+        $changeClass = $siswa['jenjang_id'] != $data['jenjang_id'] || $siswa['tingkat_id'] != $data['tingkat_id'] || $siswa['kelas_id'] != $data['kelas_id'];
+
         $updateData = [
             'nama' => trim($data['nama']),
             'nis' => $nis,
             'jenjang_id' => (int) $data['jenjang_id'],
             'tingkat_id' => (int) $data['tingkat_id'],
             'kelas_id' => !empty($data['kelas_id']) ? (int) $data['kelas_id'] : null,
-            'va' => FormatHelper::formatVA($jenjang['va_code'], $nis),
+            'va' => $changeClass ? FormatHelper::formatVA($jenjang['va_code'], $nis) : $siswa['va'],
             'no_hp_ortu' => $data['no_hp_ortu'] ?? null,
             'spp' => (float) $data['spp'],
             'updated_at' => date('Y-m-d H:i:s'),
@@ -803,7 +799,7 @@ class StudentBE
         try {
             $this->db->beginTransaction();
             $this->db->update('siswa', $updateData, ['id' => (int) $id]);
-            $this->db->update('users', ['username' => $updateData['va']], ['siswa_id' => (int) $id]);
+            $this->db->update('users', ['username' => $updateData['va'], 'password' => FormatHelper::hashPassword($updateData['va'])], ['siswa_id' => (int) $id]);
 
             $this->db->commit();
             return ApiResponse::success([], 'Data siswa berhasil diupdate.');
@@ -914,9 +910,8 @@ class StudentBE
                     $nominal += $detail['nominal'];
                 }
             }
-            $this->db->update('spp_tagihan', ['total_nominal' => $nominal, 'midtrans_trx_id' => $trx_id], ['id' => $bill['id']]);
+            $this->db->update('spp_tagihan', ['total_nominal' => $nominal], ['id' => $bill['id']]);
 
-            $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
 
             $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
             if (!$st) {
@@ -938,30 +933,6 @@ class StudentBE
                     'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
                 ];
                 $sum += (int) $d['nominal'];
-            }
-
-            $mdResult = $this->midtrans->charge([
-                'payment_type' => 'bank_transfer',
-                'transaction_details' => [
-                    'gross_amount' => $sum,
-                    'order_id' => $trx_id,
-                ],
-                'customer_details' => [
-                    'email' => '',
-                    'first_name' => $st['nama'],
-                    'last_name' => '',
-                    'phone' => $st['no_hp_ortu'],
-                ],
-                'item_details' => $items,
-                'bank_transfer' => [
-                    'bank' => 'bni',
-                    'va_number' => $st['va'],
-                ],
-            ]);
-            if (isset($mdResult->va_numbers[0]->va_number)) {
-                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
-            } else {
-                throw new Exception('Transaksi Midtrans berhasil, namun tidak menerima VA Number.');
             }
 
             $this->db->commit();
@@ -1275,9 +1246,7 @@ class StudentBE
                 }
 
                 if($row['bulan'] == $bill['bulan'] && $row['tahun'] == $bill['tahun']){
-                    $this->db->update('spp_tagihan', ['total_nominal'=>$bill['total_nominal']+$row['nominal'], 'midtrans_trx_id' => $trx_id], ['id' => $bill['id']]);
-
-                    $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
+                    $this->db->update('spp_tagihan', ['total_nominal'=>$bill['total_nominal']+$row['nominal']], ['id' => $bill['id']]);
 
                     $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
                     if (!$st) {
@@ -1299,30 +1268,6 @@ class StudentBE
                             'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
                         ];
                         $sum += (int) $d['nominal'];
-                    }
-
-                    $mdResult = $this->midtrans->charge([
-                        'payment_type' => 'bank_transfer',
-                        'transaction_details' => [
-                            'gross_amount' => $sum,
-                            'order_id' => $trx_id,
-                        ],
-                        'customer_details' => [
-                            'email' => '',
-                            'first_name' => $st['nama'],
-                            'last_name' => '',
-                            'phone' => $st['no_hp_ortu'],
-                        ],
-                        'item_details' => $items,
-                        'bank_transfer' => [
-                            'bank' => 'bni',
-                            'va_number' => $st['va'],
-                        ],
-                    ]);
-                    if (isset($mdResult->va_numbers[0]->va_number)) {
-                        $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
-                    } else {
-                        throw new Exception('Transaksi Midtrans berhasil, namun tidak menerima VA Number.');
                     }
                 }
             }

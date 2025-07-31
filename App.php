@@ -6,7 +6,6 @@ require_once __DIR__ . '/config/constants.php';
 
 use App\Router;
 use App\Database\Database;
-use App\Midtrans\Midtrans;
 use App\Helpers\ApiResponse;
 use App\Helpers\FormatHelper;
 use Symfony\Component\Dotenv\Dotenv;
@@ -28,7 +27,6 @@ class App
     private static ?App $instance = null;
     private Database $database;
     private Router $router;
-    private Midtrans $midtrans;
 
     // Properti untuk menyimpan instance service (cache)
     private $authBE = null;
@@ -52,7 +50,6 @@ class App
 
         $this->database = new Database();
         $this->router = new Router($this);
-        $this->midtrans = new Midtrans();
 
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
@@ -77,11 +74,6 @@ class App
         return $this->database;
     }
 
-    public function getMidtrans(): Midtrans
-    {
-        return $this->midtrans;
-    }
-
     public function getRouter(): Router 
     {
         return $this->router;
@@ -103,21 +95,21 @@ class App
     
     public function StudentBE() {
         if ($this->studentBE === null) {
-            $this->studentBE = new StudentBE($this->database, $this->ClassBE(), $this->BillBE(), $this->midtrans);
+            $this->studentBE = new StudentBE($this->database, $this->ClassBE(), $this->BillBE());
         }
         return $this->studentBE;
     }
     
     public function PaymentBE() {
         if ($this->paymentBE === null) {
-            $this->paymentBE = new PaymentBE($this->database, $this->midtrans);
+            $this->paymentBE = new PaymentBE($this->database);
         }
         return $this->paymentBE;
     }
     
     public function BillBE() {
         if ($this->billBE === null) {
-            $this->billBE = new BillBE($this->database, $this->midtrans);
+            $this->billBE = new BillBE($this->database);
         }
         return $this->billBE;
     }
@@ -157,7 +149,7 @@ class App
     }
     public function ReductionBE() {
         if ($this->reductionBE === null) {
-            $this->reductionBE = new ReductionBE($this->database, $this->midtrans);
+            $this->reductionBE = new ReductionBE($this->database);
         }
         return $this->reductionBE;
     }

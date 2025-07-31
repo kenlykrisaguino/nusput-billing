@@ -38,10 +38,6 @@ endif;?>
                     <div class="text-lg text-slate-800 font-medium"><?= $dashboard['va'] ?? '-' ?></div>
                 </div>
                 <div>
-                    <div class="text-xs text-blue-500 font-bold uppercase">VA Alternatif</div>
-                    <div class="text-lg text-slate-800 font-medium"><?= $dashboard['va_midtrans'] ?? '-' ?></div>
-                </div>
-                <div>
                     <div class="text-xs text-blue-500 font-bold uppercase">Kelas</div>
                     <div class="text-lg text-slate-800 font-medium"><?= $dashboard['jenjang'] ?> <?= $dashboard['tingkat'] ?> <?= $dashboard['kelas'] ?? ''?></div>
                 </div>

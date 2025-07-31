@@ -6,18 +6,15 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
-use App\Midtrans\Midtrans;
 use Exception;
 
 class ReductionBE
 {
     private $db;
-    private $midtrans;
 
-    public function __construct($database, Midtrans $midtrans)
+    public function __construct($database)
     {
         $this->db = $database;
-        $this->midtrans = $midtrans;
     }
 
     public function get()
@@ -103,7 +100,6 @@ class ReductionBE
                 ['id' => $lateBill['id']],
             );
 
-            $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
 
             $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
 
@@ -134,35 +130,9 @@ class ReductionBE
                 [
                     'denda' => (int)$dendaFinal,
                     'total_nominal' => (int)$sum,
-                    'midtrans_trx_id' => $trx_id,
                 ],
                 ['id' => $bill['id']],
             );
-
-            $mdResult = $this->midtrans->charge([
-                'payment_type' => 'bank_transfer',
-                'transaction_details' => [
-                    'gross_amount' => $sum,
-                    'order_id' => $trx_id,
-                ],
-                'customer_details' => [
-                    'email' => '', 
-                    'first_name' => $st['nama'],
-                    'last_name' => '',
-                    'phone' => $st['no_hp_ortu'],
-                ],
-                'item_details' => $items,
-                'bank_transfer' => [
-                    'bank' => 'bni',
-                    'va_number' => $st['va'], 
-                ],
-            ]);
-
-            if (isset($mdResult->va_numbers[0]->va_number)) {
-                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
-            } else {
-                throw new Exception("Transaksi Midtrans berhasil, namun tidak menerima VA Number.");
-            }
 
             // Memasukan Jurnal
             $academicYear = Call::academicYear(ACADEMIC_YEAR_AKT_FORMAT, [

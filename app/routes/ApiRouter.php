@@ -38,9 +38,6 @@ class ApiRouter
             case 'journal-data':
                 ApiResponse::success($journalBE->getJournals());
                 break;
-            case 'midtrans-callback':
-                ApiResponse::success($paymentBE->midtransCallback());
-                break;
             case 'filter-siswa':
                 ApiResponse::success($studentBE->getStudentFilter());
                 break;

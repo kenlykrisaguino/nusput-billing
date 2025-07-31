@@ -137,7 +137,6 @@
                             <thead class="text-xs text-gray-700 uppercase bg-gray-100">
                                 <tr>
                                     <th class="px-4 py-3 sticky left-0 bg-gray-100 z-10">Nama Siswa</th>
-                                    <th class="px-4 py-3 sticky left-0 bg-gray-100 z-10">Midtrans VA</th>
                                     <th class="px-4 py-3">Kelas</th>
                                     <th class="px-4 py-3 text-green-700">Tagihan</th>
                                     <th class="px-4 py-3 text-red-600">Denda</th>
@@ -165,9 +164,6 @@
                                             <?= htmlspecialchars($recap['virtual_account'] ?? '') ?>
                                         </div>
                                     </th>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($recap['va_midtrans'] ?? '-') ?>
-                                    </td>
                                     <td class="px-4 py-2 whitespace-nowrap">
                                         <?= htmlspecialchars($recap['jenjang'] ?? '') ?>
                                         <?= htmlspecialchars($recap['tingkat'] ?? '') ?>

@@ -9,7 +9,6 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
-use App\Midtrans\Midtrans;
 use DateTime;
 use Exception;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -19,13 +18,11 @@ class BillBE
 {
     private $db;
     private $journal;
-    private Midtrans $midtrans;
 
-    public function __construct($database, $midtrans)
+    public function __construct($database)
     {
         $this->db = $database;
         $this->journal = new JournalBE($database);
-        $this->midtrans = new Midtrans($midtrans);
     }
 
     public function getBills()
@@ -47,7 +44,7 @@ class BillBE
         $stmt =
             "SELECT
                     s.nama, j.nama AS jenjang, t.nama AS tingkat,
-                    k.nama AS kelas, tg.*, s.spp, s.va as virtual_account, s.va_midtrans
+                    k.nama AS kelas, tg.*, s.spp, s.va as virtual_account
                  FROM
                     siswa s LEFT JOIN
                     jenjang j on s.jenjang_id = j.id LEFT JOIN
@@ -155,7 +152,6 @@ class BillBE
                     ]);
 
                     $count = $this->countSPPRenewal($billId, $bill['bulan'], $bill['tahun']);
-                    $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
 
                     $this->db->update(
                         'spp_tagihan',
@@ -166,7 +162,6 @@ class BillBE
                             'total_nominal' => $count,
                             'count_denda' => $bill['count_denda'] + 1,
                             'status' => 'belum_lunas',
-                            'midtrans_trx_id' => $trx_id,
                         ],
                         ['id' => $billId],
                     );
@@ -177,11 +172,10 @@ class BillBE
                         'bulan' => 1,
                         'tahun' => $year,
                         'jatuh_tempo' => "$year-01-10",
-                        'total_nominal' => $student['spp'],
+                        'total_nominal' => $student['spp'] + $admin,
                         'count_denda' => 0,
                         'denda' => 0,
                         'status' => 'belum_lunas',
-                        'midtrans_trx_id' => $trx_id,
                     ]);
 
                     $this->db->insert('spp_tagihan_detail', [
@@ -216,27 +210,6 @@ class BillBE
                         'name' => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
                     ];
                 }
-
-                $mdResult = $this->midtrans->charge([
-                    'payment_type' => 'bank_transfer',
-                    'transaction_details' => [
-                        'gross_amount' => $count,
-                        'order_id' => $trx_id,
-                    ],
-                    'customer_details' => [
-                        'email' => '',
-                        'first_name' => $st['nama'],
-                        'last_name' => '',
-                        'phone' => $st['no_hp_ortu'],
-                    ],
-                    'item_details' => $items,
-                    'bank_transfer' => [
-                        'bank' => 'bni',
-                        'va_number' => $st['va'],
-                    ],
-                ]);
-
-                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $student['id']]);
             }
             $this->sendToAKTSystem(1, $year);
 
@@ -305,11 +278,10 @@ class BillBE
                             'bulan' => $latest['bulan'] + 1,
                             'tahun' => $bill['tahun'],
                             'jatuh_tempo' => $bill['tahun'] . '-01-10',
-                            'total_nominal' => $student['spp'] + $totalAdditional,
+                            'total_nominal' => $student['spp'] + $totalAdditional  + $admin,
                             'count_denda' => 0,
                             'denda' => 0,
                             'status' => 'belum_lunas',
-                            'midtrans_trx_id' => $trx_id,
                         ],
                         ['id' => $bill['id']],
                     );
@@ -333,7 +305,6 @@ class BillBE
                         ]);
                     }
                 } else {
-                    // $this->midtrans->expireTransaction($bill['midtrans_trx_id']);
                     if ($latest['bulan'] < 12) {
                         $this->db->insert('spp_tagihan_detail', [
                             'tagihan_id' => $bill['id'],
@@ -373,7 +344,6 @@ class BillBE
                             'count_denda' => $bill['count_denda'] + 1,
                             'denda' => Call::denda() * ($bill['count_denda'] + 1) + $bill['denda'],
                             'status' => 'belum_lunas',
-                            'midtrans_trx_id' => $trx_id,
                         ],
                         ['id' => $bill['id']],
                     );
@@ -444,28 +414,6 @@ class BillBE
                 if ($status != 'lunas') {
                     $countTotal = $countBelumLunas;
                 }
-
-                $mdPayload = [
-                    'payment_type' => 'bank_transfer',
-                    'transaction_details' => [
-                        'gross_amount' => $countTotal,
-                        'order_id' => $trx_id,
-                    ],
-                    'customer_details' => [
-                        'email' => '',
-                        'first_name' => $student['nama'],
-                        'last_name' => '',
-                        'phone' => $student['no_hp_ortu'],
-                    ],
-                    'item_details' => $items,
-                    'bank_transfer' => [
-                        'bank' => 'bni',
-                        'va_number' => $student['va'],
-                    ],
-                ];
-
-                $mdResult = $this->midtrans->charge($mdPayload);
-                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $student['id']]);
             }
             $this->sendToAKTSystem((int) $latest['bulan'] + 1, $latest['tahun']);
 
@@ -514,7 +462,6 @@ class BillBE
                     'count_denda' => 0,
                     'denda' => 0,
                     'status' => 'belum_lunas',
-                    'midtrans_trx_id' => $trx_id,
                 ]);
     
                 $this->db->insert('spp_tagihan_detail', [
@@ -537,7 +484,6 @@ class BillBE
 
                 $bill = $this->db->update('spp_tagihan', [
                     'total_nominal' => $tagihan,
-                    'midtrans_trx_id' => $trx_id,
                 ], ['id' => $currBill['id']]);
 
                 $detail = $this->db->update('spp_tagihan_detail', [
@@ -561,28 +507,6 @@ class BillBE
                 $sum += $d['nominal'];
             }
 
-            $mdPayload = [
-                'payment_type' => 'bank_transfer',
-                'transaction_details' => [
-                    'gross_amount' => $sum,
-                    'order_id' => $trx_id,
-                ],
-                'customer_details' => [
-                    'email' => '',
-                    'first_name' => $st['nama'],
-                    'last_name' => '',
-                    'phone' => $st['no_hp_ortu'],
-                ],
-                'item_details' => $items,
-                'bank_transfer' => [
-                    'bank' => 'bni',
-                    'va_number' => $st['va'],
-                ],
-            ];
-
-            $mdResult = $this->midtrans->charge($mdPayload);
-
-            $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
         } catch (\Exception $e) {
             $this->db->rollback();
             return Response::error('Failed to create bills: ' . $e->getMessage(), 500);
@@ -726,7 +650,6 @@ class BillBE
             } else {
                 $message .= "SPP: $monthlyFee\nDenda: $denda\n*Total Pembayaran: $sum*\n\n";
                 $message .= "Virtual Account: BNI *$siswa[va]* atas nama *$siswa[nama]*\n";
-                $message .= "Alternate VA: BNI *$siswa[va_midtrans]* atas nama *$siswa[nama]*";
             }
 
             $msgLists[] = [
@@ -1036,12 +959,9 @@ class BillBE
                 'spp_tagihan',
                 [
                     'denda' => (int)$dendaFinal,
-                    'midtrans_trx_id' => $trx_id,
                 ],
                 ['id' => $data['billId']],
             );
-
-            $this->midtrans->cancelTransaction($bill['midtrans_trx_id']);
 
             $st = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
             if (!$st) {
@@ -1063,31 +983,6 @@ class BillBE
                     'name'     => $d['jenis'] . ' ' . $d['bulan'] . ' ' . $d['tahun'],
                 ];
                 $sum += (int)$d['nominal'];
-            }
-
-            $mdResult = $this->midtrans->charge([
-                'payment_type' => 'bank_transfer',
-                'transaction_details' => [
-                    'gross_amount' => $sum,
-                    'order_id' => $trx_id,
-                ],
-                'customer_details' => [
-                    'email' => '', 
-                    'first_name' => $st['nama'],
-                    'last_name' => '',
-                    'phone' => $st['no_hp_ortu'],
-                ],
-                'item_details' => $items,
-                'bank_transfer' => [
-                    'bank' => 'bni',
-                    'va_number' => $st['va'], 
-                ],
-            ]);
-
-            if (isset($mdResult->va_numbers[0]->va_number)) {
-                $this->db->update('siswa', ['va_midtrans' => $mdResult->va_numbers[0]->va_number], ['id' => $st['id']]);
-            } else {
-                throw new Exception("Transaksi Midtrans berhasil, namun tidak menerima VA Number.");
             }
 
             // Memasukan Jurnal

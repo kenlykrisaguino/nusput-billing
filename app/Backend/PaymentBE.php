@@ -6,7 +6,6 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
-use App\Midtrans\Midtrans;
 use DateTime;
 use Error;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -22,12 +21,10 @@ use Mpdf\Output\Destination;
 class PaymentBE
 {
     private $db;
-    private Midtrans $midtrans;
 
-    public function __construct($database, Midtrans $midtrans)
+    public function __construct($database)
     {
         $this->db = $database;
-        $this->midtrans = $midtrans;
     }
 
     public function getPayments()
@@ -248,7 +245,7 @@ class PaymentBE
         $vaString = implode(',', $paymentData['va']);
         $billDetailQuery = "SELECT
                                 b.id, b.siswa_id as user_id, u.va as virtual_account,
-                                u.no_hp_ortu as parent_phone, b.midtrans_trx_id
+                                u.no_hp_ortu as parent_phone
                             FROM
                                 spp_tagihan b INNER JOIN
                                 siswa u ON u.id = b.siswa_id
@@ -292,8 +289,6 @@ class PaymentBE
                     ],
                     ['id' => $bill_id],
                 );
-
-                $this->midtrans->cancelTransaction($r['midtrans_trx_id']);
 
                 $url = $_SERVER['HTTP_HOST'];
                 $encrypted = $this->generateInvoiceURL($r['user_id'], $relasi_tagihan);
@@ -628,70 +623,6 @@ class PaymentBE
             return ApiResponse::error($e->getMessage());
         } catch (\Exception $e) {
             return ApiResponse::error($e->getMessage());
-        }
-    }
-
-    public function midtransCallback()
-    {
-        $json_callback = file_get_contents('php://input');
-        $data = json_decode($json_callback, true);
-
-        try {
-            $notif = $this->midtrans->getNotificationHandler();
-
-            // Ambil data penting dari notifikasi
-            $transactionStatus = $notif->transaction_status;
-            $orderId = $notif->order_id;
-            $grossAmount = $notif->gross_amount;
-            $paymentType = $notif->payment_type;
-            $fraudStatus = $notif->fraud_status;
-
-            $bill = $this->db->find('spp_tagihan', ['midtrans_trx_id' => $orderId]);
-
-            if (!$bill) {
-                error_log('Midtrans callback for unknown order_id: ' . $orderId);
-                return ApiResponse::error(['message' => 'Order ID not found in database.']); // Kembalikan 200 OK
-            }
-
-            if ($transactionStatus == 'settlement') {
-                $this->db->update('spp_tagihan', [
-                    'status' => 'lunas', 
-                    'denda' => 0, 
-                    'count_denda' => 0, 
-                    'total_nominal' => 0
-                ], ['id' => $bill['id']]);
-                $payment = $this->db->insert('spp_pembayaran', [
-                    'siswa_id' => $bill['siswa_id'],
-                    'tanggal_pembayaran' => Call::timestamp(),
-                    'jumlah_bayar' => $grossAmount,
-                ]);
-                
-                $this->db->update('spp_tagihan_detail', ['lunas' => 1, 'pembayaran_id' => $payment], ['tagihan_id' => $bill['id'], 'lunas' => 0]);
-                $relasiTagihan = $this->db->insert('spp_pembayaran_tagihan', [
-                    'pembayaran_id' => $payment,
-                    'tagihan_id' => $bill['id'],
-                    'jumlah' => $grossAmount,
-                ]);
-                error_log('Transaction order_id: ' . $orderId . ' successfully settled using ' . $paymentType);
-                $url = $_SERVER['HTTP_HOST'];
-                $siswa = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
-
-                $encrypted = $this->generateInvoiceURL($siswa['id'], $relasiTagihan);
-
-                $waMsg[] = [
-                    'target' => $siswa['no_hp_ortu'],
-                    'message' => "Pembayaran SPP telah masuk ke dalam sistem. Untuk mendapatkan detail resi pembayaran, bisa menggunakan link berikut:\n\n
-                    http://$url/invoice/$encrypted",
-                    'delay' => '1',
-                ];
-                $messages = json_encode($waMsg);
-                Fonnte::sendMessage(['data' => $messages]);
-            }
-
-            return ApiResponse::success('Callback processed successfully');
-        } catch (\Exception $e) {
-            error_log('Error processing Midtrans callback for order_id ' . ($data['order_id'] ?? 'N/A') . ': ' . $e->getMessage() . ' at line ' . $e->getLine() . ' in ' . $e->getFile());
-            return ApiResponse::error('Callback received, but an error occurred during processing. Please check server logs for order_id: ' . ($data['order_id'] ?? 'N/A'));
         }
     }
 }

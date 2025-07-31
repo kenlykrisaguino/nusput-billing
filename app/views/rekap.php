@@ -24,7 +24,7 @@
     <section id="recaps">
         <h3 class="font-semibold">Transaction Recap</h3>
         <div class="bg-slate-50 p-4 rounded-xl mt-2 relative overflow-x-auto shadow-md sm:rounded-lg">
-                <table id="recap-table" class="w-full text-sm text-left rtl:text-right text-gray-500">
+            <table id="recap-table" class="w-full text-sm text-left rtl:text-right text-gray-500">
                     <thead>
                         <tr>
                             <th class="px-4 py-2">
@@ -109,8 +109,8 @@
                         </tr>
                         <?php endif;?>
                     </tbody>
-                </table>
-            </div>
+            </table>
+        </div>
     </section>
 </div>
 
