@@ -550,11 +550,12 @@ class StudentBE
 
             $rowErrors = [];
             $nis = trim($rowData[0] ?? '');
-            $nama = trim($rowData[1] ?? '');
-            $jenjangName = strtolower(trim($rowData[2] ?? ''));
-            $tingkatName = strtolower(trim($rowData[3] ?? ''));
-            $kelasName = strtolower(trim($rowData[4] ?? ''));
-            $noHpOrtu = trim($rowData[5] ?? '');
+            $va = trim($rowData[1] ?? '');
+            $nama = trim($rowData[2] ?? '');
+            $jenjangName = strtolower(trim($rowData[3] ?? ''));
+            $tingkatName = strtolower(trim($rowData[4] ?? ''));
+            $kelasName = strtolower(trim($rowData[5] ?? ''));
+            $noHpOrtu = trim($rowData[6] ?? '');
 
             if (empty($nis)) {
                 $rowErrors[] = 'NIS wajib diisi.';
@@ -587,6 +588,7 @@ class StudentBE
             if (empty($rowErrors)) {
                 $validRows[] = [
                     'nis' => $nis,
+                    'va' => $va,
                     'nama' => $nama,
                     'jenjang_id' => $jenjangId,
                     'tingkat_id' => $tingkatId,
@@ -622,7 +624,7 @@ class StudentBE
             'jenjang_id' => $row['jenjang_id'],
             'tingkat_id' => $row['tingkat_id'],
             'kelas_id' => $row['kelas_id'],
-            'va' => $va,
+            'va' => $row['va'] ?? $va,
             'no_hp_ortu' => $row['no_hp_ortu'],
             'spp' => $spp,
         ];
@@ -663,7 +665,7 @@ class StudentBE
             'jenjang_id' => $row['jenjang_id'],
             'tingkat_id' => $row['tingkat_id'],
             'kelas_id' => $row['kelas_id'],
-            'va' => $va,
+            'va' => $row['va'] ?? $va,
             'no_hp_ortu' => $row['no_hp_ortu'],
             'spp' => $spp,
             'updated_at' => Call::date(),
@@ -684,11 +686,12 @@ class StudentBE
     public function exportStudentXLSX()
     {
         // 1. Definisikan header yang sama persis dengan template upload
-        $header = ['NIS', 'Nama Lengkap', 'Jenjang', 'Tingkat', 'Kelas', 'No. HP Orang Tua'];
+        $header = ['NIS', 'VA', 'Nama Lengkap', 'Jenjang', 'Tingkat', 'Kelas', 'No. HP Orang Tua'];
 
         // 2. Query untuk mengambil data siswa aktif dengan format yang sesuai
         $query = "SELECT
                     s.nis,
+                    s.va,
                     s.nama,
                     j.nama AS jenjang,
                     t.nama AS tingkat,
