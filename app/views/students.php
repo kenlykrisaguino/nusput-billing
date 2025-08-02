@@ -96,35 +96,6 @@
                         class="ti ti-refresh-dot text-lg"></i><span x-show="sidebarOpen || isMobile"
                         :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
                         class="transition-transform duration-150">Update Biaya Admin</span></div>
-                <div x-show="sidebarOpen" class="flex gap-2 items-center mb-2 mt-4">
-                    <h4 class="text-xs uppercase">class actions</h4>
-                    <div class="flex-1">
-                        <hr class="text-white">
-                    </div>
-                </div>
-                <div x-show="!sidebarOpen && !isMobile" class="flex justify-center mb-2 mt-4"><i
-                        class="ti ti-school text-white text-xl"></i></div>
-                <div @click="$dispatch('open-create-level-modal')"
-                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
-                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
-                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Jenjang'"><i
-                        class="ti ti-stairs-up text-lg"></i><span x-show="sidebarOpen || isMobile"
-                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
-                        class="transition-transform duration-150">Tambah Jenjang</span></div>
-                <div @click="$dispatch('open-create-grade-modal')"
-                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
-                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
-                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Tingkat'"><i
-                        class="ti ti-layers-subtract text-lg"></i><span x-show="sidebarOpen || isMobile"
-                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
-                        class="transition-transform duration-150">Tambah Tingkat</span></div>
-                <div @click="$dispatch('open-create-class-modal')"
-                    :class="{ 'sidebar-item-icon-only': !sidebarOpen && !isMobile }"
-                    class="flex gap-2 items-center cursor-pointer hover:text-slate-200 transition-colors py-1"
-                    :title="(sidebarOpen || isMobile) ? '' : 'Tambah Kelas'"><i
-                        class="ti ti-chalkboard text-lg"></i><span x-show="sidebarOpen || isMobile"
-                        :class="{ 'hover:translate-x-2': sidebarOpen && !isMobile }"
-                        class="transition-transform duration-150">Tambah Kelas</span></div>
             </div>
         </div>
     </div>
@@ -212,68 +183,6 @@
                         </table>
                     </div>
                 </section>
-
-                <section id="classes" class="mt-8">
-                    <div class="flex justify-between items-center">
-                        <h3 class="font-semibold text-xl text-slate-700">Tariff Management</h3>
-                        <div class="flex items-center gap-2">
-                            <button @click="$dispatch('open-create-tariff-modal')"
-                                class="px-4 py-2 bg-sky-600 text-white rounded-md hover:bg-sky-700 transition-colors text-sm font-medium flex items-center gap-2">
-                                <i class="ti ti-receipt-2"></i>
-                                Tambah Tarif
-                            </button>
-                        </div>
-                    </div>
-                    <div class="bg-white p-4 rounded-lg mt-4 relative overflow-x-auto shadow">
-                        <table id="class-table" class="w-full text-sm text-left rtl:text-right text-gray-700">
-                            <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                                <tr>
-                                    <th class="px-4 py-3">Actions</th>
-                                    <th class="px-4 py-3">Jenjang</th>
-                                    <th class="px-4 py-3">Tingkat</th>
-                                    <th class="px-4 py-3">Kelas</th>
-                                    <th class="px-4 py-3">Nominal Tarif SPP</th>
-                                    <th class="px-4 py-3">Tahun</th>
-                                    <th class="px-4 py-3">Digunakan oleh</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php $tariffs = $app->ClassBE()->getTariffList() ?? []; ?>
-                                <?php if (count($tariffs) > 0) : ?><?php foreach($tariffs as $tariff) :?>
-                                <tr
-                                    class="odd:bg-white even:bg-gray-50 border-b dark:border-gray-600 hover:bg-gray-100">
-                                    <td class="px-4 py-2 flex gap-2 items-center">
-                                        <button type="button"
-                                            class="text-sky-600 hover:text-sky-800 cursor-pointer edit-tariff-btn"
-                                            onclick="window.dispatchEvent(new CustomEvent('open-edit-tariff-modal', { detail: { tariffId: <?= htmlspecialchars($tariff['id'] ?? 0) ?> } }))"
-                                            title="Edit Tarif">
-                                            <i class="ti ti-pencil"></i>
-                                        </button>
-                                    </td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($tariff['jenjang'] ?? '-') ?></th>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($tariff['tingkat'] ?? '-') ?></td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($tariff['kelas'] ?? 'Semua Kelas') ?></td>
-                                    <td class="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
-                                        <?= \App\Helpers\FormatHelper::formatRupiah($tariff['nominal'] ?? 0) ?>
-                                    </td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($tariff['tahun']) ?></td>
-                                    <td class="px-4 py-2 whitespace-nowrap">
-                                        <?= htmlspecialchars($tariff['jumlah_siswa'] ?? 0) ?> siswa</td>
-                                </tr>
-                                <?php endforeach;?><?php else :?>
-                                <tr>
-                                    <td class="px-4 py-2 text-center text-gray-500" colspan="6">Belum ada data
-                                        tarif.</td>
-                                </tr>
-                                <?php endif;?>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
             </div>
         </div>
     </div>
@@ -283,11 +192,6 @@
 <?php include_once __DIR__ . '/modals/student-update-bulk.php'; ?>
 <?php include_once __DIR__ . '/modals/student-filter.php'; ?>
 <?php include_once __DIR__ . '/modals/student-edit.php'; ?>
-<?php include_once __DIR__ . '/modals/level-create.php'; ?>
-<?php include_once __DIR__ . '/modals/grade-create.php'; ?>
-<?php include_once __DIR__ . '/modals/class-create.php'; ?>
-<?php include_once __DIR__ . '/modals/tariff-create.php'; ?>
-<?php include_once __DIR__ . '/modals/tariff-edit.php'; ?>
 <?php include_once __DIR__ . '/modals/additional-import.php'; ?>
 <?php include_once __DIR__ . '/modals/admin-update.php'; ?>
 
@@ -310,23 +214,6 @@
                 perPage: "siswa per halaman",
                 noRows: "Tidak ada data siswa ditemukan",
                 info: "Menampilkan {start} sampai {end} dari {rows} siswa"
-            }
-        });
-    }
-    const classTableElement = document.getElementById("class-table");
-    if (classTableElement) {
-        new DataTable(classTableElement, {
-            paging: true,
-            perPage: 5,
-            perPageSelect: [5, 10, 15, 20, 25],
-            searchable: true,
-            sortable: true,
-            filter: true,
-            labels: {
-                placeholder: "Cari tarif...",
-                perPage: "kelas per halaman",
-                noRows: "Tidak ada data kelas ditemukan",
-                info: "Menampilkan {start} sampai {end} dari {rows} kelas"
             }
         });
     }

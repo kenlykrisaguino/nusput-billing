@@ -110,7 +110,7 @@ class BillBE
 
             if (isset($bulanResult['bulan'])) {
                 if ($bulanResult['bulan'] != 13) {
-                    return Response::error('Harap selesaikan cek tagihan sampai bulan desember untuk membuat tagihan tahunan');
+                    return Response::error('Harap selesaikan cek tagihan sampai bulan juni untuk membuat tagihan tahunan');
                 }
             }
 
@@ -567,8 +567,8 @@ class BillBE
             }
         }
 
-        $bulan = FormatHelper::formatMonthNameInBahasa($month);
-        $bulanSebelum = FormatHelper::formatMonthNameInBahasa($month - 1);
+        $bulan = FormatHelper::formatMonthNameInBahasa(($month + 5) % 12 + 1);
+        $bulanSebelum = FormatHelper::formatMonthNameInBahasa($month - 1 + 5) % 12 + 1;
         $postValue = [];
         foreach ($journalData as $level => $journalLevel) {
             foreach ($journalLevel as $code => $amount) {
@@ -612,7 +612,7 @@ class BillBE
             'bulan' => $max['bulan'],
             'tahun' => $max['tahun'],
         ]);
-        $monthName = FormatHelper::formatMonthNameInBahasa($max['bulan']);
+        $monthName = FormatHelper::formatMonthNameInBahasa(($max['bulan'] + 5) % 12 + 1);
 
         $msg = [
             'success' => ['Pembayaran SPP Bulan', $monthName],

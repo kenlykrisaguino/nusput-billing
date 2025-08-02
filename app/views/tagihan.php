@@ -144,7 +144,7 @@
                                     <?php if (count($billRecaps) > 0) : ?>
                                     <th
                                         class="px-4 py-3 text-center  <?= $billRecaps[0]['bulan'] ?? false == $month ? 'bg-sky-100' : '' ?>">
-                                        <?= htmlspecialchars(sprintf('%02d', $month)) ?></th>
+                                        <?= htmlspecialchars(sprintf('%02d', ($month + 5) % 12 + 1)) ?></th>
                                     <?php else: ?>
                                     <th class="px-4 py-3 text-center"><?= htmlspecialchars(sprintf('%02d', $month)) ?>
                                     </th>

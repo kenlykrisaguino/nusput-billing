@@ -60,18 +60,18 @@ class FormatHelper
     public static function formatMonthNameInBahasa(int|string $input): int|string|null
     {
         $months = [
-            1  => "Januari",
-            2  => "Februari",
-            3  => "Maret",
-            4  => "April",
-            5  => "Mei",
-            6  => "Juni",
-            7  => "Juli",
-            8  => "Agustus",
-            9  => "September",
-            10 => "Oktober",
-            11 => "November",
-            12 => "Desember"
+            7  => "Januari",
+            8  => "Februari",
+            9  => "Maret",
+            10 => "April",
+            11 => "Mei",
+            12 => "Juni",
+            1  => "Juli",
+            2  => "Agustus",
+            3  => "September",
+            4  => "Oktober",
+            5  => "November",
+            6  => "Desember"
         ];
     
         if (is_int($input)) {

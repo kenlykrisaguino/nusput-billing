@@ -28,11 +28,11 @@
                     <label for="create_reduction_bulan" class="block text-sm font-medium text-gray-700 mb-1">Bulan</label>
                     <input type="number" id="create_reduction_bulan" x-model.number="formData.bulan" required placeholder="Input Bulan"
                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
-                    <p class="mt-1 text-xs text-gray-500">Bulan 1 = Januari ; 12 = Desember</p>
+                    <p class="mt-1 text-xs text-gray-500">Bulan 1 = Juli ; 12 = Juni</p>
                 </div>
                 <div>
-                    <label for="create_reduction_tahun" class="block text-sm font-medium text-gray-700 mb-1">Tahun</label>
-                    <input type="number" id="create_reduction_tahun" x-model.number="formData.tahun" required placeholder="Tahun 20XX"
+                    <label for="create_reduction_tahun" class="block text-sm font-medium text-gray-700 mb-1">Tahun Mulai Ajaran</label>
+                    <input type="number" id="create_reduction_tahun" x-model.number="formData.tahun" required placeholder="20XX"
                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm">
                     <p class="mt-1 text-xs text-gray-500">Tahun 2024, 2025, dst...</p>
                 </div>

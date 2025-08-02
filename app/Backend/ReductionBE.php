@@ -156,7 +156,7 @@ class ReductionBE
             $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
             $url = "$base_url/page/transaksi/backend/create.php";
 
-            $bulanStr = FormatHelper::formatMonthNameInBahasa((int)$data['bulan']);
+            $bulanStr = FormatHelper::formatMonthNameInBahasa(((int)$data['bulan'] + 5 )% 12 + 1);
 
             $message = "Pengajuan Peringanan Denda SPP Periode $data[bulan] $data[tahun] telah disetujui.
             
@@ -170,7 +170,7 @@ class ReductionBE
                 'delay' => '1',
             ];
             $messages = json_encode($msgLists);
-            $fonnte = Fonnte::sendMessage(['data' => $messages]);
+            Fonnte::sendMessage(['data' => $messages]);
 
             $kodeTrx = $data['nominal'] >= 0 ? 'PHPD' : 'PNBD';
             // PNBD

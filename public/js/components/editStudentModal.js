@@ -11,7 +11,7 @@ document.addEventListener("alpine:init", () => {
       feeCategoryList: [],
       additionalFees: [],
       feePeriod: {
-        month: new Date().getMonth() + 1,
+        month: ((new Date().getMonth() + 6) % 12) + 1,
         year: new Date().getFullYear(),
       },
     },
@@ -20,18 +20,18 @@ document.addEventListener("alpine:init", () => {
       const monthSelect = document.getElementById("edit_fee_month");
       const yearSelect = document.getElementById("edit_fee_year");
       const months = [
-        "Januari",
-        "Februari",
-        "Maret",
-        "April",
-        "Mei",
-        "Juni",
         "Juli",
         "Agustus",
         "September",
         "Oktober",
         "November",
         "Desember",
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
+        "Mei",
+        "Juni",
       ];
       months.forEach((name, i) => {
         monthSelect.add(new Option(name, i + 1));
@@ -40,7 +40,9 @@ document.addEventListener("alpine:init", () => {
       for (let y = currentYear + 1; y >= currentYear - 2; y--) {
         yearSelect.add(new Option(y, y));
       }
-      this.a.feePeriod.month = new Date().getMonth() + 1;
+      console.log("Current month set to:", this.a.feePeriod.month);
+      this.a.feePeriod.month = ((new Date().getMonth() + 6) % 12) + 1;
+      console.log("Current month set to:", this.a.feePeriod.month);
       this.a.feePeriod.year = currentYear;
     },
 
@@ -134,7 +136,7 @@ document.addEventListener("alpine:init", () => {
       this.a.tingkatList = [];
       this.a.kelasList = [];
       this.a.additionalFees = [];
-      this.a.feePeriod.month = new Date().getMonth() + 1;
+      this.a.feePeriod.month = ((new Date().getMonth() + 6) % 12) + 1;
       this.a.feePeriod.year = new Date().getFullYear();
     },
 

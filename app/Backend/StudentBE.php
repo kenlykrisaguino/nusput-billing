@@ -1038,6 +1038,7 @@ class StudentBE
 
         $params['semester'] = $params['semester'] == 1 || $params['semester'] == FIRST_SEMESTER ? FIRST_SEMESTER : SECOND_SEMESTER;
         $monthList = Call::monthNameSemester($params['semester']);
+
         $paramQuery = " AND s.id = $params[id]";
 
         if ($params['academic_year'] != NULL_VALUE) {
@@ -1058,7 +1059,7 @@ class StudentBE
             $year = explode('/', $params['academic_year'], 2);
 
             if ($params['semester'] == SECOND_SEMESTER) {
-                $paramQuery .= " AND YEAR(b.jatuh_tempo) = $year[1]";
+                $paramQuery .= " AND YEAR(b.jatuh_tempo) = $year[0]";
                 $queryFilter['bulan'] = [1, 2, 3, 4, 5, 6];
                 $queryFilter['tahun'] = $year[1];
             } else {
@@ -1071,7 +1072,7 @@ class StudentBE
         $result = [];
         foreach ($queryFilter['bulan'] as $trx) {
             $data = $this->db->findAll('spp_tagihan_detail', [
-                'bulan' => $trx, 
+                'bulan' => ($trx + 5) % 12 + 1, 
                 'tahun' => $queryFilter['tahun'], 
                 'tagihan_id' => $tagihan['id']
             ]);

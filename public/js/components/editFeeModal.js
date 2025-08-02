@@ -51,11 +51,18 @@ document.addEventListener("alpine:init", () => {
         this.fees.dynamic_fees = data.fee_details.dynamic_fees || [];
         this.studentName = data.siswa;
 
-        const monthName = new Date(this.year, this.month - 1).toLocaleString(
-          "id-ID",
-          { month: "long" }
-        );
-        this.periodLabel = `${monthName} ${this.year}`;
+        var month = this.month;
+        var year = this.year;
+        const period = new Date(year, month - 1);
+        period.setMonth(period.getMonth() + 6);
+
+        console.info(response, month, year, period);
+
+        this.periodLabel = new Intl.DateTimeFormat("id-ID", {
+          year: "numeric",
+          month: "long",
+          timeZone: "asia/jakarta",
+        }).format(period);
       } catch (error) {
         console.error("Gagal memuat rincian tagihan:", error);
         window.showToast("Gagal memuat data rincian tagihan.", "error");
