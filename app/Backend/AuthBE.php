@@ -7,6 +7,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
+use Config\Config;
 use Exception;
 
 class AuthBE
@@ -258,8 +259,8 @@ class AuthBE
         $systemCode = "PBN";
 
         $string = $user['user']['username']."|-|$systemCode";
-        $key = $_ENV['NUSPUT_SECRET_KEY'];
-        $method = $_ENV['ENCRYPTION_METHOD'];
+        $key = Config::getConfig('NUSPUT_SECRET_KEY');
+        $method = Config::getConfig('ENCRYPTION_METHOD');
 
         $ivLength = openssl_cipher_iv_length($method);
         $iv = openssl_random_pseudo_bytes($ivLength);
@@ -267,7 +268,7 @@ class AuthBE
         $encrypted = openssl_encrypt($string, $method, $key, 0, $iv);
         $encrypted_with_iv = base64_encode($iv . $encrypted);
 
-        $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+        $base_url = rtrim(Config::getConfig('ACCOUNTING_SYSTEM_URL'), '/');
         $url = "$base_url/secret-login.php?secret=".$encrypted_with_iv;
         header('Location: '.$url, true);
     }
@@ -279,8 +280,8 @@ class AuthBE
         }
 
         $secret = $_GET['secret'];
-        $key = $_ENV['NUSPUT_SECRET_KEY'];
-        $method = $_ENV['ENCRYPTION_METHOD'];
+        $key = Config::getConfig('NUSPUT_SECRET_KEY');
+        $method = Config::getConfig('ENCRYPTION_METHOD');
         
         $data = base64_decode($secret);
 

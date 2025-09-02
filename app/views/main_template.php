@@ -62,7 +62,11 @@
                 </div>
             </div>
             <nav class="hidden md:flex gap-4 items-center">
-                <?php if(isset($_SESSION['role']) && $_SESSION['role'] === USER_ROLE_STUDENT): ?>
+                <?php
+
+                    use Config\Config;
+
+ if(isset($_SESSION['role']) && $_SESSION['role'] === USER_ROLE_STUDENT): ?>
                 <a href="/student-recap" class="block text-gray-700 hover:text-sky-600 transition-colors">Ringkasan</a>
                 <?php elseif(isset($_SESSION['role'])): ?>
                 <a href="/dashboard" class="block text-gray-700 hover:text-sky-600 transition-colors">Dashboard</a>
@@ -104,7 +108,7 @@
                         class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Tagihan</a>
                     <a href="/laporan"
                         class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-sky-50 hover:text-sky-700">Laporan</a>
-                    <a href="<?= $_ENV['ACCOUNTING_SYSTEM_URL'] ?>"
+                    <a href="<?= Config::getConfig('ACCOUNTING_SYSTEM_URL') ?>"
                         class="block px-3 py-2 rounded-md text-base font-medium text-sky-700 hover:bg-sky-50 hover:text-sky-900">Sistem Akutansi</a>
                     <?php endif; ?>
                     <hr class="my-1">

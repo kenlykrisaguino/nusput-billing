@@ -1,8 +1,10 @@
 <?php
 
+use Config\Config;
+
 return [
-    'host'     => $_ENV['DB_HOST'],
-    'username' => $_ENV['DB_USER'],
-    'password' => $_ENV['DB_PASS'],
-    'database' => $_ENV['DB_NAME'],
+    'host'     => Config::getConfig('DB_HOST'),
+    'username' => Config::getConfig('DB_USER'),
+    'password' => Config::getConfig('DB_PASS'),
+    'database' => Config::getConfig('DB_NAME'),
 ];

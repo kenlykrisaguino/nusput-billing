@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'APP_URL' => 'http://nusput-billing.test',
+    'APP_NAME' => '"Nusaputera Billing System"',
+    
+    'DB_HOST' => 'localhost',
+    'DB_USER' => 'root',
+    'DB_PASS' => '',
+    'DB_NAME' => 'db_tuition',
+
+    'BANK_CODE' => '9881105',
+    
+    'FONNTE_TOKEN' => 'CG9B3oteGcYrZFy4zNfD',
+    
+    'ENCRYPTION_KEY' => 'givansa',
+    'ENCRYPTION_METHOD' => 'AES-128-CTR',
+
+    'ACCOUNTING_SYSTEM_URL' => 'http://nusput-akt.test/',
+    'MIDTRANS_SERVER_KEY' => 'SB-Mid-server-VkNf6EP0-eSWbdsbW6JymRNO',
+    'MIDTRANS_CLIENT_KEY' => 'SB-Mid-client-EDEQ4tEDzrPkquuh',
+    'MIDTRANS_IS_PRODUCTION' => false,
+    'MIDTRANS_IS_SANITIZED' => true,
+    'MIDTRANS_IS_3DS' => true,
+
+    'NUSPUT_SECRET_KEY' => 'nusaputer4'
+];

@@ -9,6 +9,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
+use Config\Config;
 use DateTime;
 use Exception;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -524,7 +525,7 @@ class BillBE
 
         // ! Kirim ke Sistem AKT
         $levels = $this->db->fetchAll($this->db->query('SELECT * FROM jenjang'));
-        $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+        $base_url = rtrim(Config::getConfig('ACCOUNTING_SYSTEM_URL'), '/');
         $url = "$base_url/page/transaksi/backend/create.php";
         // TODO: Store the data that are being sent
         $journalData = [];
@@ -666,8 +667,8 @@ class BillBE
 
     protected function generateInvoiceURL($user, $bill)
     {
-        $key = $_ENV['ENCRYPTION_KEY'];
-        $method = $_ENV['ENCRYPTION_METHOD'];
+        $key = Config::getConfig('ENCRYPTION_KEY');
+        $method = Config::getConfig('ENCRYPTION_METHOD');
 
         $string = "$user|-|$bill";
 
@@ -996,7 +997,7 @@ class BillBE
             $siswa = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
             $jenjang = $this->db->find('jenjang', ['id' => $siswa['jenjang_id']]);
             
-            $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+            $base_url = rtrim(Config::getConfig('ACCOUNTING_SYSTEM_URL'), '/');
             $url = "$base_url/page/transaksi/backend/create.php";
 
             $bulanStr = FormatHelper::formatMonthNameInBahasa((int)$data['month']);

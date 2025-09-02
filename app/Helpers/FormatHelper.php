@@ -1,6 +1,9 @@
 <?php
 
 namespace App\Helpers;
+
+use Config\Config;
+
 require_once dirname(dirname(__DIR__)) . '/config/constants.php';
 
 class FormatHelper
@@ -16,7 +19,7 @@ class FormatHelper
         $current_year = Call::year(YEAR_TWO_DIGIT_FORMAT, $current_date);
         $semester     = Call::semester($current_date);
         $academic_year = $semester == FIRST_SEMESTER ? "$current_year" . $current_year+1 : $current_year-1 . "$current_year";
-        return $_ENV['BANK_CODE'] . $level . $academic_year . $nis;
+        return Config::getConfig('BANK_CODE') . $level . $academic_year . $nis;
     }
 
     public static function formatSystemLog(String $type, Array $attr = [])

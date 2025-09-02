@@ -1,5 +1,7 @@
 <?php
 
+use Config\Config;
+
 return [
-    'fonnte_token'     => $_ENV['FONNTE_TOKEN'],
+    'fonnte_token'     => Config::getConfig('FONNTE_TOKEN'),
 ];

@@ -6,6 +6,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
+use Config\Config;
 use Exception;
 
 class ReductionBE
@@ -153,7 +154,7 @@ class ReductionBE
             $siswa = $this->db->find('siswa', ['id' => $bill['siswa_id']]);
             $jenjang = $this->db->find('jenjang', ['id' => $siswa['jenjang_id']]);
             
-            $base_url = rtrim($_ENV['ACCOUNTING_SYSTEM_URL'], '/');
+            $base_url = rtrim(Config::getConfig('ACCOUNTING_SYSTEM_URL'), '/');
             $url = "$base_url/page/transaksi/backend/create.php";
 
             $bulanStr = FormatHelper::formatMonthNameInBahasa(((int)$data['bulan'] + 5 )% 12 + 1);

@@ -6,6 +6,7 @@ use App\Helpers\ApiResponse;
 use App\Helpers\Call;
 use App\Helpers\Fonnte;
 use App\Helpers\FormatHelper;
+use Config\Config;
 use DateTime;
 use Error;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -358,8 +359,8 @@ class PaymentBE
 
     public function generateInvoiceURL($user, $bill)
     {
-        $key = $_ENV['ENCRYPTION_KEY'];
-        $method = $_ENV['ENCRYPTION_METHOD'];
+        $key =  Config::getConfig('ENCRYPTION_KEY');
+        $method = Config::getConfig('ENCRYPTION_METHOD');
 
         $string = "$user|-|$bill";
 
@@ -374,8 +375,8 @@ class PaymentBE
 
     protected function decryptInvoiceCode($encrypted)
     {
-        $key = $_ENV['ENCRYPTION_KEY'];
-        $method = $_ENV['ENCRYPTION_METHOD'];
+        $key = Config::getConfig('ENCRYPTION_KEY');
+        $method = Config::getConfig('ENCRYPTION_METHOD');
 
         $data = base64_decode($encrypted);
 
